@@ -99,7 +99,7 @@
           await loadSheetData();
         }
         // Supponiamo che nella colonna 'QR' ci siano i valori da confrontare
-        const trovato = iscritti.find(r => r.QR === qrValue);
+        const trovato = iscritti.find(r => r.TESSERA === qrValue);
         showResult(!!trovato);
       } catch (err) {
         console.error(err);
