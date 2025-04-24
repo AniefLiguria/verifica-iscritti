@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Verifica Iscrizione</title>
   <style>
+    /* Layout di base */
     html, body {
       margin: 0; padding: 0;
       width: 100%; height: 100%;
@@ -14,25 +15,27 @@
       position: relative;
       overflow: hidden;
     }
+    /* Logo in alto a sinistra */
     #logo {
       position: absolute;
       top: 1em; left: 1em;
-      width: 80px;
-      height: auto;
+      width: 80px; height: auto;
     }
+    /* Versione in basso a destra */
     #version {
       position: absolute;
       bottom: 1em; right: 1em;
       font-size: 0.9em; color: #555;
     }
+    /* Messaggio centrale */
     #message {
       position: absolute;
       top: 50%; transform: translateY(-50%);
       font-size: 2em; color: white;
       text-shadow: 0 0 5px rgba(0,0,0,0.5);
-      text-align: center;
-      padding: 0 1em;
+      text-align: center; padding: 0 1em;
     }
+    /* Loader in alto a destra */
     #loader {
       position: absolute;
       top: 1em; right: 1em;
@@ -42,30 +45,41 @@
   </style>
 </head>
 <body>
-  <!-- Logo ANIEF -->
-  <img id="logo" src="https://drive.google.com/uc?export=download&id=1rUXfMi2kYlvT87wCUhxJGvZ0eYdKW3DZ" alt="Logo ANIEF">
+  <!-- Logo ANIEF (hosted qui) -->
+  <img
+    id="logo"
+    src="logo.png"
+    alt="Logo ANIEF"
+    loading="lazy"
+    onerror="this.style.display='none'; console.warn('Logo non trovato');"
+  >
 
-  <!-- Versione App -->
+  <!-- Numero di versione -->
   <div id="version">v1.0.0</div>
 
+  <!-- Loading indicator -->
   <div id="loader">Caricamento dati…</div>
+
+  <!-- Video e Canvas per scanner -->
   <video id="video" autoplay playsinline></video>
   <canvas id="canvas" hidden></canvas>
+
+  <!-- Messaggio principale -->
   <div id="message">Inquadra un QR code…</div>
 
-  <!-- Librerie esterne da CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js"></script>
+  <!-- Librerie esterne -->
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" integrity="sha384-XXXXXXXX" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js" integrity="sha384-YYYYYYYY" crossorigin="anonymous"></script>
 
   <script>
   (function(){
     'use strict';
 
-    // Numero di versione (aggiorna qui per le nuove release)
+    // Versione app (aggiornare qui ad ogni rilascio)
     const APP_VERSION = 'v1.0.0';
     document.getElementById('version').textContent = APP_VERSION;
 
-    // Link di download diretto al CSV su Google Drive
+    // URL diretto al CSV su Google Drive (pubblico)
     const SHEET_CSV_URL = 'https://drive.google.com/uc?export=download&id=1xG7CtEQTUZ61qqceo4CAzI-FA31qmuH3';
 
     const video    = document.getElementById('video');
@@ -73,24 +87,27 @@
     const ctx      = canvas.getContext('2d');
     const message  = document.getElementById('message');
     const loader   = document.getElementById('loader');
+
     let isProcessing = false;
     let iscritti = [];
 
-    // Mostra o nasconde il loader
-    function setLoading(on) {
-      loader.style.display = on ? 'block' : 'none';
+    // Mostra/Nasconde loader
+    function setLoading(active) {
+      loader.style.display = active ? 'block' : 'none';
     }
 
     // Inizializza fotocamera
     async function initCamera() {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment' }
+        });
         video.srcObject = stream;
         await video.play();
-      } catch (err) {
-        console.error(err);
-        showError("Impossibile accedere alla fotocamera");
-        throw err;
+      } catch (e) {
+        console.error(e);
+        showError('Impossibile accedere alla fotocamera');
+        throw e;
       }
     }
 
@@ -98,64 +115,65 @@
     async function loadSheetData() {
       setLoading(true);
       try {
-        const results = await new Promise((resolve, reject) => {
+        const results = await new Promise((res, rej) => {
           Papa.parse(SHEET_CSV_URL, {
             download: true,
             header: true,
             skipEmptyLines: true,
-            complete: resolve,
-            error: reject
+            complete: res,
+            error: rej
           });
         });
         iscritti = results.data
           .map(r => ({ TESSERA: String(r.TESSERA).trim() }))
           .filter(r => r.TESSERA);
-      } catch (err) {
-        console.error(err);
-        showError("Errore caricamento CSV");
-        throw err;
+      } catch (e) {
+        console.error(e);
+        showError('Errore caricamento CSV');
+        throw e;
       } finally {
         setLoading(false);
       }
     }
 
-    // Mostra schermo con colore e testo
-    function showResult(isIscritto) {
-      document.body.style.background = isIscritto ? '#2ECC71' : '#E74C3C';
-      message.textContent = isIscritto ? 'ISCRITTO' : 'NON ISCRITTO';
+    // Mostra risultato OK/KO
+    function showResult(ok) {
+      document.body.style.background = ok ? '#2ECC71' : '#E74C3C';
+      message.textContent = ok ? 'ISCRITTO' : 'NON ISCRITTO';
     }
 
+    // Mostra messaggio di errore
     function showError(text) {
       document.body.style.background = '#555';
       message.textContent = text;
     }
 
-    // Ciclo di scansione QR
+    // Scanner loop
     function tick() {
       if (video.readyState === video.HAVE_ENOUGH_DATA) {
         canvas.width  = video.videoWidth;
         canvas.height = video.videoHeight;
         ctx.drawImage(video, 0, 0);
-        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const code = jsQR(imgData.data, imgData.width, imgData.height, { inversionAttempts: "attemptBoth" });
+        const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' });
         if (code && !isProcessing) {
           isProcessing = true;
-          handleQRCode(code.data.trim());
+          handleQR(code.data.trim());
         }
       }
       requestAnimationFrame(tick);
     }
 
-    // Verifica codice QR confrontando con colonna TESSERA
-    async function handleQRCode(qrValue) {
+    // Gestione singolo QR
+    async function handleQR(value) {
       try {
         if (!iscritti.length) {
           await loadSheetData();
         }
-        const trovato = iscritti.some(r => r.TESSERA === qrValue);
-        showResult(trovato);
-      } catch {
-        // errore già gestito in loadSheetData
+        const found = iscritti.some(r => r.TESSERA === value);
+        showResult(found);
+      } catch (e) {
+        // già gestito in loadSheetData
       } finally {
         setTimeout(() => {
           isProcessing = false;
@@ -165,7 +183,7 @@
       }
     }
 
-    // Avvio
+    // Avvio all’apertura della pagina
     window.addEventListener('load', async () => {
       try {
         await initCamera();
