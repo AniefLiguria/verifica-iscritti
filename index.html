@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Verifica Iscrizione</title>
+  <style>
+    html, body {
+      margin: 0; padding: 0;
+      width: 100%; height: 100%;
+      display: flex; align-items: center; justify-content: center;
+      font-family: sans-serif;
+      transition: background 0.5s;
+    }
+    #message {
+      position: absolute;
+      top: 50%; transform: translateY(-50%);
+      font-size: 2em; color: white;
+      text-shadow: 0 0 5px rgba(0,0,0,0.5);
+    }
+    video { display: none; }
+  </style>
+</head>
+<body>
+  <video id="video" autoplay playsinline></video>
+  <canvas id="canvas" hidden></canvas>
+  <div id="message">Inquadra un QR code…</div>
+
+  <!-- Librerie esterne da CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js"></script>
+
+  <script>
+  (function(){
+    'use strict';
+
+    // **1) Configura qui l’URL CSV del tuo Google Sheet (Publish → CSV)**
+    const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/ID_DEL_TUO_FOGLIO/pub?output=csv';
+
+    const video    = document.getElementById('video');
+    const canvas   = document.getElementById('canvas');
+    const ctx      = canvas.getContext('2d');
+    const message  = document.getElementById('message');
+    let isProcessing = false;
+    let iscritti = [];  // cache dei dati
+
+    // Richiedi accesso alla fotocamera
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+      .then(stream => { video.srcObject = stream; video.play(); })
+      .catch(err => showError("Impossibile accedere alla fotocamera"));
+
+    // Carica i dati dal foglio e memorizza in memoria
+    function loadSheetData(){
+      return new Promise((resolve, reject) => {
+        Papa.parse(SHEET_CSV_URL, {
+          download: true,
+          header: true,
+          complete: results => {
+            iscritti = results.data;
+            resolve();
+          },
+          error: err => reject(err)
+        });
+      });
+    }
+
+    // Mostra schermo verde o rosso
+    function showResult(isIscritto){
+      document.body.style.background = isIscritto ? '#2ECC71' : '#E74C3C';
+      message.textContent = isIscritto ? 'ISCRITTO' : 'NON ISCRITTO';
+    }
+
+    function showError(text){
+      document.body.style.background = '#333';
+      message.textContent = text;
+    }
+
+    // Ciclo di scansione
+    function tick(){
+      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        canvas.width  = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0);
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(imgData.data, imgData.width, imgData.height, { inversionAttempts: "attemptBoth" });
+        if (code && !isProcessing) {
+          isProcessing = true;
+          verifica(code.data.trim());
+        }
+      }
+      requestAnimationFrame(tick);
+    }
+
+    // Verifica QR nel foglio
+    async function verifica(qrValue){
+      try {
+        if (iscritti.length === 0) {
+          await loadSheetData();
+        }
+        // Supponiamo che nella colonna 'QR' ci siano i valori da confrontare
+        const trovato = iscritti.find(r => r.QR === qrValue);
+        showResult(!!trovato);
+      } catch (err) {
+        console.error(err);
+        showError("Errore di rete o formato foglio errato");
+      } finally {
+        // dopo 5 secondi rieffettua la scansione
+        setTimeout(() => { isProcessing = false; message.textContent = 'Inquadra un QR code…'; }, 5000);
+      }
+    }
+
+    // Avvia tutto
+    video.addEventListener('play', () => requestAnimationFrame(tick));
+  })();
+  </script>
+</body>
+</html>
+
