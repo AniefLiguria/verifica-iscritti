@@ -13,19 +13,37 @@
       transition: background 0.5s;
       position: relative; overflow: hidden;
     }
+    /* Logo in alto a sinistra */
     #logo {
       position: absolute; top: 1em; left: 1em;
       width: 80px; height: auto;
     }
+    /* Versione in basso a destra */
     #version {
       position: absolute; bottom: 1em; right: 1em;
       font-size: 0.9em; color: #555;
     }
+    /* Loader con testo e spinner */
     #loader {
       position: absolute; top: 1em; right: 1em;
+      display: none; align-items: center;
       font-size: 0.9em; color: #555;
+    }
+    #loader-text {
+      margin-right: 0.5em;
+    }
+    #spinner {
+      width: 16px; height: 16px;
+      border: 2px solid #ccc;
+      border-top-color: #333;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
       display: none;
     }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    /* Messaggio centrale */
     #message {
       position: absolute; top: 50%; transform: translateY(-50%);
       font-size: 2em; color: white;
@@ -41,8 +59,13 @@
        loading="lazy" onerror="this.style.display='none'">
   <div id="version">v1.2.0</div>
 
-  <!-- Loader e Scanner -->
-  <div id="loader">Caricamento dati… 0%</div>
+  <!-- Loader -->
+  <div id="loader">
+    <span id="loader-text">Caricamento dati… 0%</span>
+    <div id="spinner"></div>
+  </div>
+
+  <!-- Scanner -->
   <video id="video" autoplay playsinline></video>
   <canvas id="canvas" hidden></canvas>
   <div id="message">Inquadra un QR code…</div>
@@ -54,56 +77,75 @@
   (function(){
     'use strict';
 
-    const APP_VERSION   = 'v1.2.0';
-    const SHEET_CSV_URL = 'iscritti.csv';  // file nel repo root
+    const APP_VERSION   = 'v1.3.0';
+    const SHEET_CSV_URL = 'iscritti.csv';  // file CSV nella root del repo
+    const CACHE_KEY     = 'iscrittiCache';
+    const CACHE_VER_KEY = 'iscrittiCacheVer';
 
-    const logo    = document.getElementById('logo');
-    const version = document.getElementById('version');
-    const loader  = document.getElementById('loader');
-    const video   = document.getElementById('video');
-    const canvas  = document.getElementById('canvas');
-    const ctx     = canvas.getContext('2d');
-    const message = document.getElementById('message');
+    const logo        = document.getElementById('logo');
+    const versionDom  = document.getElementById('version');
+    const loader      = document.getElementById('loader');
+    const loaderText  = document.getElementById('loader-text');
+    const spinner     = document.getElementById('spinner');
+    const video       = document.getElementById('video');
+    const canvas      = document.getElementById('canvas');
+    const ctx         = canvas.getContext('2d');
+    const message     = document.getElementById('message');
 
-    let iscritti = [];
-    let isProcessing = false;
+    let iscritti      = [];
+    let isProcessing  = false;
 
     // Imposta versione
-    version.textContent = APP_VERSION;
+    versionDom.textContent = APP_VERSION;
 
-    // Mostra/nasconde loader
-    function setLoading(active, text = '') {
-      loader.style.display = active ? 'block' : 'none';
-      if (text) loader.textContent = text;
+    function showLoader(show) {
+      loader.style.display = show ? 'flex' : 'none';
+      if (!show) spinner.style.display = 'none';
     }
 
-    // Inizializza fotocamera
-    async function initCamera() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment' }
+    function initCamera() {
+      return navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+        .then(stream => {
+          video.srcObject = stream;
+          return video.play();
+        })
+        .catch(err => {
+          console.error(err);
+          showError('Impossibile accedere alla fotocamera');
+          throw err;
         });
-        video.srcObject = stream;
-        await video.play();
-      } catch (err) {
-        console.error(err);
-        showError('Impossibile accedere alla fotocamera');
-        throw err;
-      }
     }
 
-    // Carica e parsifica CSV “one-per-line”
+    // Carica e parsifica CSV con caching e spinner
     async function loadSheetData() {
-      setLoading(true, 'Caricamento dati… 0%');
+      // Controlla cache
+      const cachedVer = localStorage.getItem(CACHE_VER_KEY);
+      const cached    = localStorage.getItem(CACHE_KEY);
+      if (cached && cachedVer === APP_VERSION) {
+        iscritti = JSON.parse(cached);
+        return;
+      }
+
+      showLoader(true);
+      loaderText.textContent = 'Caricamento dati… 0%';
+
       try {
         const resp = await fetch(SHEET_CSV_URL);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
         const length = Number(resp.headers.get('content-length'));
         const reader = resp.body.getReader();
         const chunks = [];
         let received = 0;
 
-        // Leggi a pezzi e aggiorna percentuale
+        const useSpinner = !length;
+        if (useSpinner) {
+          // mostra spinner, nascondi testo
+          loaderText.style.display = 'none';
+          spinner.style.display = 'block';
+        }
+
+        // Lettura a pezzi
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
@@ -111,11 +153,11 @@
           received += value.length;
           if (length) {
             const pct = Math.min(100, Math.round(received / length * 100));
-            loader.textContent = `Caricamento dati… ${pct}%`;
+            loaderText.textContent = `Caricamento dati… ${pct}%`;
           }
         }
 
-        // Decodifica testo
+        // Decodifica
         const data = new Uint8Array(received);
         let offset = 0;
         for (const chunk of chunks) {
@@ -126,35 +168,35 @@
 
         // Split su righe, filtra vuote
         const lines = text.trim().split(/\r?\n/).filter(l => l.trim());
-
-        // Rimuovi header se presente
         const hasHeader = lines[0].toUpperCase() === 'TESSERA';
         const values = hasHeader ? lines.slice(1) : lines;
-
         iscritti = values.map(v => v.trim());
+
+        // Salva cache
+        localStorage.setItem(CACHE_KEY, JSON.stringify(iscritti));
+        localStorage.setItem(CACHE_VER_KEY, APP_VERSION);
 
       } catch (err) {
         console.error(err);
         showError('Errore caricamento CSV');
         throw err;
       } finally {
-        setLoading(false);
+        // reset loader
+        loaderText.style.display = '';
+        showLoader(false);
       }
     }
 
-    // Mostra risultato
     function showResult(ok) {
       document.body.style.background = ok ? '#2ECC71' : '#E74C3C';
       message.textContent = ok ? 'ISCRITTO' : 'NON ISCRITTO';
     }
 
-    // Mostra errore
     function showError(txt) {
       document.body.style.background = '#555';
       message.textContent = txt;
     }
 
-    // Loop di scansione
     function tick() {
       if (video.readyState === video.HAVE_ENOUGH_DATA) {
         canvas.width  = video.videoWidth;
@@ -170,16 +212,14 @@
       requestAnimationFrame(tick);
     }
 
-    // Gestione singolo QR
     async function handleQR(val) {
       try {
         if (!iscritti.length) {
           await loadSheetData();
         }
-        const found = iscritti.includes(val);
-        showResult(found);
+        showResult(iscritti.includes(val));
       } catch {
-        // errore già notificato
+        // già gestito
       } finally {
         setTimeout(() => {
           isProcessing = false;
@@ -189,13 +229,12 @@
       }
     }
 
-    // Avvio
     window.addEventListener('load', async () => {
       try {
         await initCamera();
         requestAnimationFrame(tick);
       } catch {
-        // errori già gestiti
+        // errori già mostrati
       }
     });
   })();
