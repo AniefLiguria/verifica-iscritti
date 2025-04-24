@@ -13,95 +13,61 @@
       transition: background 0.5s;
       position: relative; overflow: hidden;
     }
-    /* Logo in alto a sinistra */
-    #logo {
-      position: absolute; top: 1em; left: 1em;
-      width: 80px; height: auto;
-    }
-    /* Versione in basso a destra */
-    #version {
-      position: absolute; bottom: 1em; right: 1em;
-      font-size: 0.9em; color: #555;
-    }
-    /* Loader con testo e spinner */
+    #logo { position: absolute; top:1em; left:1em; width:80px; }
+    #version { position: absolute; bottom:1em; right:1em; color:#555; }
     #loader {
-      position: absolute; top: 1em; right: 1em;
-      display: none; align-items: center;
-      font-size: 0.9em; color: #555;
+      position: absolute; top:1em; right:1em;
+      display:none; align-items:center; color:#555;
     }
-    #loader-text {
-      margin-right: 0.5em;
-    }
+    #loader-text { margin-right:.5em; }
     #spinner {
-      width: 16px; height: 16px;
-      border: 2px solid #ccc;
-      border-top-color: #333;
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-      display: none;
+      width:16px; height:16px;
+      border:2px solid #ccc; border-top-color:#333;
+      border-radius:50%; animation:spin 1s linear infinite;
+      display:none;
     }
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-    /* Messaggio centrale */
+    @keyframes spin { to { transform:rotate(360deg); } }
     #message {
-      position: absolute; top: 50%; transform: translateY(-50%);
-      font-size: 2em; color: white;
-      text-shadow: 0 0 5px rgba(0,0,0,0.5);
-      text-align: center; padding: 0 1em;
+      position:absolute; top:50%; transform:translateY(-50%);
+      font-size:2em; color:white; text-align:center;
+      text-shadow:0 0 5px rgba(0,0,0,0.5); padding:0 1em;
     }
-    /* Pannello debug */
     #debug {
-      position: absolute; bottom: 2em; left: 1em;
-      width: 300px; max-height: 30%;
-      overflow-y: auto;
-      background: rgba(0,0,0,0.7);
-      color: #0f0;
-      font-size: 0.75em;
-      line-height: 1.2;
-      padding: 0.5em;
-      display: none;
-      z-index: 999;
+      position:absolute; bottom:2em; left:1em;
+      width:300px; max-height:30%; overflow-y:auto;
+      background:rgba(0,0,0,0.7); color:#0f0;
+      font-size:.75em; line-height:1.2; padding:.5em;
+      display:none; z-index:999;
     }
-    video { display: none; }
+    video { display:none; }
   </style>
 </head>
 <body>
-  <!-- Logo e Versione -->
-  <img id="logo" src="logo.png" alt="Logo ANIEF"
-       loading="lazy" onerror="this.style.display='none'">
-  <div id="version">v1.3.6</div>
+  <img id="logo" src="logo.png" alt="Logo ANIEF" onerror="this.style.display='none'">
+  <div id="version">v1.3.7</div>
 
-  <!-- Loader -->
   <div id="loader">
     <span id="loader-text">Caricamento dati… 0%</span>
     <div id="spinner"></div>
   </div>
 
-  <!-- Scanner -->
   <video id="video" autoplay playsinline></video>
   <canvas id="canvas" hidden></canvas>
   <div id="message">Inquadra un QR code…</div>
-
-  <!-- Debug panel -->
   <div id="debug"></div>
 
-  <!-- Librerie -->
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
-
   <script>
   (function(){
     'use strict';
 
-    // ==== CONFIGURAZIONE ====
-    const DEBUG         = true;            // true per attivare logging a schermo
-    const APP_VERSION   = 'v1.3.6';
-    const SHEET_CSV_URL = 'https://drive.google.com/file/d/1xG7CtEQTUZ61qqceo4CAzI-FA31qmuH3/view?usp=sharing';
+    const DEBUG         = true;
+    const APP_VERSION   = 'v1.3.7';
+    // Usa qui un URL CSV CORRETTO (pubb. con Google Sheets o su GH Pages)
+    const SHEET_CSV_URL = 'iscritti.csv';
     const CACHE_KEY     = 'iscrittiCache';
     const CACHE_VER_KEY = 'iscrittiCacheVer';
-    // =======================
 
-    // Elementi DOM
     const versionDom  = document.getElementById('version');
     const loader      = document.getElementById('loader');
     const loaderText  = document.getElementById('loader-text');
@@ -112,51 +78,46 @@
     const message     = document.getElementById('message');
     const debugPanel  = document.getElementById('debug');
 
-    let iscritti      = [];
+    let iscrittiSet   = null;
     let isProcessing  = false;
 
-    // Visualizza la versione
     versionDom.textContent = APP_VERSION;
 
-    // Funzione di logging
     function debugLog(...args) {
       console.log(...args);
       if (!DEBUG) return;
       debugPanel.style.display = 'block';
       const line = document.createElement('div');
-      line.textContent = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
+      line.textContent = args.map(a=> typeof a==='string'?a:JSON.stringify(a)).join(' ');
       debugPanel.appendChild(line);
       debugPanel.scrollTop = debugPanel.scrollHeight;
     }
 
-    // Mostra/nasconde loader
-    function showLoader(show) {
-      loader.style.display = show ? 'flex' : 'none';
-      if (!show) spinner.style.display = 'none';
+    function showLoader(on) {
+      loader.style.display = on ? 'flex' : 'none';
+      if (!on) spinner.style.display = 'none';
     }
 
-    // Inizializza fotocamera
     async function initCamera() {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-        video.srcObject = stream;
+        const s = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+        video.srcObject = s;
         await video.play();
-        debugLog('📷 Fotocamera inizializzata');
-      } catch (err) {
-        debugLog('❌ Errore fotocamera:', err);
+      } catch (e) {
+        debugLog('Errore camera', e);
         showError('Impossibile accedere alla fotocamera');
-        throw err;
+        throw e;
       }
     }
 
-    // Carica e parsifica CSV con caching e spinner
     async function loadSheetData() {
-      // Usa cache se valida
-      const cachedVer = localStorage.getItem(CACHE_VER_KEY);
-      const cached    = localStorage.getItem(CACHE_KEY);
-      if (cached && cachedVer === APP_VERSION) {
-        iscritti = JSON.parse(cached);
-        debugLog('🗂️ Tessere caricate da cache:', iscritti.length);
+      // cache check
+      const v = localStorage.getItem(CACHE_VER_KEY);
+      const d = localStorage.getItem(CACHE_KEY);
+      if (d && v === APP_VERSION) {
+        const arr = JSON.parse(d);
+        iscrittiSet = new Set(arr);
+        debugLog('Usata cache, size=', iscrittiSet.size, arr.slice(0,10));
         return;
       }
 
@@ -165,9 +126,7 @@
 
       try {
         const resp = await fetch(SHEET_CSV_URL);
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        debugLog('🌐 Fetch CSV OK');
-
+        if (!resp.ok) throw new Error(resp.status);
         const length = Number(resp.headers.get('content-length'));
         const reader = resp.body.getReader();
         const chunks = [];
@@ -179,50 +138,42 @@
           spinner.style.display = 'block';
         }
 
-        while (true) {
-          const { done, value } = await reader.read();
+        while(true) {
+          const {done,value} = await reader.read();
           if (done) break;
           chunks.push(value);
           received += value.length;
           if (length) {
-            const pct = Math.round(received / length * 100);
+            const pct = Math.round(received/length*100);
             loaderText.textContent = `Caricamento dati… ${pct}%`;
           }
         }
-        debugLog('✅ Download completato, bytes:', received);
 
-        // Decodifica testo
-        const data = new Uint8Array(received);
-        let offset = 0;
-        for (const chunk of chunks) {
-          data.set(chunk, offset);
-          offset += chunk.length;
-        }
-        const text = new TextDecoder('utf-8').decode(data);
+        const buf = new Uint8Array(received);
+        let off=0;
+        for(const c of chunks){ buf.set(c, off); off+=c.length; }
+        const text = new TextDecoder('utf-8').decode(buf);
 
-        // Split e parsing linee
-        const lines = text.trim().split(/\r?\n/).filter(l => l.trim());
-        const hasHeader = lines[0].toUpperCase() === 'TESSERA';
-        const values = hasHeader ? lines.slice(1) : lines;
-        iscritti = values.map(v => v.trim());
-        debugLog('🗂️ Tessere parse-ate:', iscritti.length);
+        const lines = text.trim().split(/\r?\n/).filter(l=>l.trim());
+        const hasHeader = lines[0].toUpperCase()==='TESSERA';
+        const vals = (hasHeader?lines.slice(1):lines)
+                      .map(l=>l.trim().replace(/^\uFEFF/,''));
+        debugLog('Parsed count=', vals.length, 'sample=', vals.slice(0,10));
 
-        // Salva cache
-        localStorage.setItem(CACHE_KEY, JSON.stringify(iscritti));
+        iscrittiSet = new Set(vals);
+        localStorage.setItem(CACHE_KEY, JSON.stringify(vals));
         localStorage.setItem(CACHE_VER_KEY, APP_VERSION);
-        debugLog('💾 Cache aggiornata');
 
-      } catch (err) {
-        debugLog('❌ Errore caricamento CSV:', err);
+      } catch(e) {
+        debugLog('Errore fetch/parsing', e);
         showError('Errore caricamento CSV');
-        throw err;
+        throw e;
       } finally {
         loaderText.style.display = '';
         showLoader(false);
       }
     }
 
-    // Mostra risultato: ISCRITTO con il numero, oppure NON ISCRITTO
     function showResult(found, val) {
       if (found) {
         document.body.style.background = '#2ECC71';
@@ -231,23 +182,22 @@
         document.body.style.background = '#E74C3C';
         message.textContent = 'NON ISCRITTO';
       }
-      debugLog('🔍 Verifica:', found ? 'trovato' : 'non trovato', val);
+      debugLog('Verifica:', found, val);
     }
 
     function showError(txt) {
       document.body.style.background = '#555';
       message.textContent = txt;
-      debugLog('🚨 Errore:', txt);
+      debugLog('Error:', txt);
     }
 
-    // Loop scansione QR
     function tick() {
       if (video.readyState === video.HAVE_ENOUGH_DATA) {
         canvas.width  = video.videoWidth;
         canvas.height = video.videoHeight;
-        ctx.drawImage(video, 0, 0);
-        const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' });
+        ctx.drawImage(video,0,0);
+        const img = ctx.getImageData(0,0,canvas.width,canvas.height);
+        const code = jsQR(img.data,img.width,img.height,{inversionAttempts:'attemptBoth'});
         if (code && !isProcessing) {
           isProcessing = true;
           handleQR(code.data.trim());
@@ -256,39 +206,28 @@
       requestAnimationFrame(tick);
     }
 
-    // Gestione singolo QR con ciclo esplicito
-    async function handleQR(val) {
-      debugLog('🎯 QR letto:', val);
+    async function handleQR(raw) {
+      debugLog('QR raw:', JSON.stringify(raw));
       try {
-        if (!iscritti.length) await loadSheetData();
-        // Controllo manuale col break
-        let found = false;
-        for (let i = 0; i < iscritti.length; i++) {
-          if (iscritti[i] === val) {
-            found = true;
-            break;
-          }
-        }
-        showResult(found, val);
+        if (!iscrittiSet) await loadSheetData();
+        const normalized = raw.replace(/\D/g,''); // se numerico
+        const key = iscrittiSet.has(raw) ? raw : (iscrittiSet.has(normalized)?normalized:raw);
+        const found = iscrittiSet.has(key);
+        showResult(found, key);
       } catch {
-        // già gestito
+        // già mostrato
       } finally {
-        setTimeout(() => {
-          isProcessing = false;
-          message.textContent = 'Inquadra un QR code…';
-          document.body.style.background = null;
-        }, 5000);
+        setTimeout(()=>{
+          isProcessing=false;
+          message.textContent='Inquadra un QR code…';
+          document.body.style.background=null;
+        },5000);
       }
     }
 
-    // Avvio
-    window.addEventListener('load', async () => {
-      try {
-        await initCamera();
-        requestAnimationFrame(tick);
-      } catch {
-        // errori già gestiti
-      }
+    window.addEventListener('load',async()=>{
+      await initCamera();
+      requestAnimationFrame(tick);
     });
   })();
   </script>
