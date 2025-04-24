@@ -17,11 +17,19 @@
       top: 50%; transform: translateY(-50%);
       font-size: 2em; color: white;
       text-shadow: 0 0 5px rgba(0,0,0,0.5);
+      text-align: center;
+      padding: 0 1em;
+    }
+    #loader {
+      position: absolute;
+      top: 1em; right: 1em;
+      font-size: 0.8em; color: #555;
     }
     video { display: none; }
   </style>
 </head>
 <body>
+  <div id="loader">Caricamento dati…</div>
   <video id="video" autoplay playsinline></video>
   <canvas id="canvas" hidden></canvas>
   <div id="message">Inquadra un QR code…</div>
@@ -34,50 +42,72 @@
   (function(){
     'use strict';
 
-    // **1) Configura qui l’URL CSV del tuo file Drive (condivisione pubblica)**
-    // Ho trasformato il link di visualizzazione in un link di download diretto:
     const SHEET_CSV_URL = 'https://drive.google.com/uc?export=download&id=1xG7CtEQTUZ61qqceo4CAzI-FA31qmuH3';
-
     const video    = document.getElementById('video');
     const canvas   = document.getElementById('canvas');
     const ctx      = canvas.getContext('2d');
     const message  = document.getElementById('message');
+    const loader   = document.getElementById('loader');
     let isProcessing = false;
-    let iscritti = [];  // cache dei dati
+    let iscritti = [];
 
-    // Richiedi accesso alla fotocamera
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-      .then(stream => { video.srcObject = stream; video.play(); })
-      .catch(err => showError("Impossibile accedere alla fotocamera"));
-
-    // Carica i dati dal Drive CSV e memorizza in memoria
-    function loadSheetData(){
-      return new Promise((resolve, reject) => {
-        Papa.parse(SHEET_CSV_URL, {
-          download: true,
-          header: true,
-          complete: results => {
-            iscritti = results.data;
-            resolve();
-          },
-          error: err => reject(err)
-        });
-      });
+    // Mostra o nasconde loader
+    function setLoading(on) {
+      loader.style.display = on ? 'block' : 'none';
     }
 
-    // Mostra schermo verde o rosso
-    function showResult(isIscritto){
+    // Inizializza fotocamera
+    async function initCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        video.srcObject = stream;
+        await video.play();
+      } catch (err) {
+        console.error(err);
+        showError("Impossibile accedere alla fotocamera");
+        throw err;
+      }
+    }
+
+    // Carica e parsifica CSV
+    async function loadSheetData() {
+      setLoading(true);
+      try {
+        const results = await new Promise((resolve, reject) => {
+          Papa.parse(SHEET_CSV_URL, {
+            download: true,
+            header: true,
+            skipEmptyLines: true,
+            complete: results => resolve(results),
+            error: err => reject(err)
+          });
+        });
+        // Filtra righe senza TESSERA e normalizza a stringa
+        iscritti = results.data
+          .map(r => ({ TESSERA: String(r.TESSERA).trim() }))
+          .filter(r => r.TESSERA);
+      } catch (err) {
+        console.error(err);
+        showError("Errore caricamento CSV");
+        throw err;
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    // Mostra schermo con colore e testo
+    function showResult(isIscritto) {
       document.body.style.background = isIscritto ? '#2ECC71' : '#E74C3C';
       message.textContent = isIscritto ? 'ISCRITTO' : 'NON ISCRITTO';
     }
 
-    function showError(text){
-      document.body.style.background = '#333';
+    function showError(text) {
+      document.body.style.background = '#555';
       message.textContent = text;
     }
 
-    // Ciclo di scansione
-    function tick(){
+    // Ciclo di scansione QR
+    function tick() {
       if (video.readyState === video.HAVE_ENOUGH_DATA) {
         canvas.width  = video.videoWidth;
         canvas.height = video.videoHeight;
@@ -86,32 +116,41 @@
         const code = jsQR(imgData.data, imgData.width, imgData.height, { inversionAttempts: "attemptBoth" });
         if (code && !isProcessing) {
           isProcessing = true;
-          verifica(code.data.trim());
+          handleQRCode(code.data.trim());
         }
       }
       requestAnimationFrame(tick);
     }
 
-    // Verifica QR nel file CSV
-    async function verifica(qrValue){
+    // Verifica codice QR confrontando con colonna TESSERA
+    async function handleQRCode(qrValue) {
       try {
-        if (iscritti.length === 0) {
+        if (!iscritti.length) {
           await loadSheetData();
         }
-        // Supponiamo che nella colonna 'QR' ci siano i valori da confrontare
-        const trovato = iscritti.find(r => r.TESSERA === qrValue);
-        showResult(!!trovato);
-      } catch (err) {
-        console.error(err);
-        showError("Errore di rete o formato CSV errato");
+        const trovato = iscritti.some(r => r.TESSERA === qrValue);
+        showResult(trovato);
+      } catch {
+        // errore già gestito in loadSheetData
       } finally {
-        // dopo 5 secondi rieffettua la scansione
-        setTimeout(() => { isProcessing = false; message.textContent = 'Inquadra un QR code…'; }, 5000);
+        // reset dopo 5s
+        setTimeout(() => {
+          isProcessing = false;
+          message.textContent = 'Inquadra un QR code…';
+          document.body.style.background = null;
+        }, 5000);
       }
     }
 
-    // Avvia tutto
-    video.addEventListener('play', () => requestAnimationFrame(tick));
+    // Avvio
+    window.addEventListener('load', async () => {
+      try {
+        await initCamera();
+        requestAnimationFrame(tick);
+      } catch {
+        // nulla: errori già mostrati
+      }
+    });
   })();
   </script>
 </body>
