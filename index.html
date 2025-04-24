@@ -13,7 +13,7 @@
       position: relative; overflow: hidden;
       /* Background iniziale: istruzioni */
       background: url('istruzioni.jpg') center/cover no-repeat;
-      transition: background-color 0.5s;
+      transition: background-color 0.5s, background-image 0.5s;
     }
     #logo { position:absolute; top:1em; left:1em; width:80px; }
     #version { position:absolute; bottom:1em; right:1em; color:#555; }
@@ -47,7 +47,7 @@
 </head>
 <body>
   <img id="logo" src="logo.png" alt="Logo ANIEF" onerror="this.style.display='none'">
-  <div id="version">v1.4.0</div>
+  <div id="version">v1.4.2</div>
 
   <div id="loader">
     <span id="loader-text">Caricamento dati… 0%</span>
@@ -64,8 +64,8 @@
   (function(){
     'use strict';
 
-    const DEBUG         = true;
-    const APP_VERSION   = 'v1.4.0';
+    const DEBUG         = false;
+    const APP_VERSION   = 'v1.4.2';
     const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQvb_6MieMU47M51EmRjlX_AFHSXIFtn0K9PJwGNz2gJYSE0WEMFdgoa7GYwsQsQYYhUHSO-r_RFAvC/pub?gid=1662775114&single=true&output=csv';
     const CACHE_KEY     = 'iscrittiCache';
     const CACHE_VER_KEY = 'iscrittiCacheVer';
@@ -83,7 +83,6 @@
     let iscrittiSet  = null;
     let isProcessing = false;
 
-    // Imposta versione
     versionDom.textContent = APP_VERSION;
 
     function debugLog(...args) {
@@ -91,7 +90,7 @@
       if (!DEBUG) return;
       debugPanel.style.display = 'block';
       const line = document.createElement('div');
-      line.textContent = args.map(a=> typeof a==='string'?a:JSON.stringify(a)).join(' ');
+      line.textContent = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
       debugPanel.appendChild(line);
       debugPanel.scrollTop = debugPanel.scrollHeight;
     }
@@ -157,9 +156,9 @@
         for (const c of chunks) { buf.set(c, off); off += c.length; }
         const text = dec.decode(buf);
 
-        const lines = text.trim().split(/\r?\n/).filter(l=>l.trim());
-        const hasHeader = lines[0].toUpperCase()==='TESSERA';
-        const vals = (hasHeader?lines.slice(1):lines).map(l=>l.trim().replace(/^\uFEFF/,''));
+        const lines = text.trim().split(/\r?\n/).filter(l => l.trim());
+        const hasHeader = lines[0].toUpperCase() === 'TESSERA';
+        const vals = (hasHeader ? lines.slice(1) : lines).map(l => l.trim().replace(/^\uFEFF/, ''));
         debugLog('Parsed count=', vals.length);
 
         iscrittiSet = new Set(vals);
@@ -177,7 +176,7 @@
     }
 
     function showResult(found, val) {
-      // rimuove background-image istruzioni
+      // Rimuove background-image istruzioni
       document.body.style.backgroundImage = 'none';
       if (found) {
         document.body.style.backgroundColor = '#2ECC71';
@@ -200,9 +199,9 @@
       if (video.readyState === video.HAVE_ENOUGH_DATA) {
         canvas.width  = video.videoWidth;
         canvas.height = video.videoHeight;
-        ctx.drawImage(video,0,0);
-        const img = ctx.getImageData(0,0,canvas.width,canvas.height);
-        const code = jsQR(img.data,img.width,img.height,{inversionAttempts:'attemptBoth'});
+        ctx.drawImage(video, 0, 0);
+        const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' });
         if (code && !isProcessing) {
           isProcessing = true;
           handleQR(code.data.trim());
@@ -221,18 +220,16 @@
       } catch {
         // già mostrato
       } finally {
-        setTimeout(()=>{
-          isProcessing=false;
+        setTimeout(() => {
+          isProcessing = false;
           // ripristina istruzioni
-          document.body.style.backgroundImage = `url('istruzioni.png')`;
-          document.body.style.backgroundSize = 'cover';
-          document.body.style.backgroundPosition = 'center';
+          document.body.style.background = `url('istruzioni.jpg') center/cover no-repeat`;
           message.textContent = 'Inquadra un QR code…';
-        },5000);
+        }, 5000);
       }
     }
 
-    window.addEventListener('load', async ()=>{
+    window.addEventListener('load', async () => {
       await initCamera();
       requestAnimationFrame(tick);
     });
