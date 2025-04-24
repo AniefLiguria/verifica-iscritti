@@ -70,7 +70,7 @@
   <!-- Logo e Versione -->
   <img id="logo" src="logo.png" alt="Logo ANIEF"
        loading="lazy" onerror="this.style.display='none'">
-  <div id="version">v1.3.5</div>
+  <div id="version">v1.3.6</div>
 
   <!-- Loader -->
   <div id="loader">
@@ -95,7 +95,7 @@
 
     // ==== CONFIGURAZIONE ====
     const DEBUG         = true;            // true per attivare logging a schermo
-    const APP_VERSION   = 'v1.3.5';
+    const APP_VERSION   = 'v1.3.6';
     const SHEET_CSV_URL = 'https://drive.google.com/file/d/1xG7CtEQTUZ61qqceo4CAzI-FA31qmuH3/view?usp=sharing';
     const CACHE_KEY     = 'iscrittiCache';
     const CACHE_VER_KEY = 'iscrittiCacheVer';
@@ -256,12 +256,19 @@
       requestAnimationFrame(tick);
     }
 
-    // Gestione singolo QR
+    // Gestione singolo QR con ciclo esplicito
     async function handleQR(val) {
       debugLog('🎯 QR letto:', val);
       try {
         if (!iscritti.length) await loadSheetData();
-        const found = iscritti.includes(val);
+        // Controllo manuale col break
+        let found = false;
+        for (let i = 0; i < iscritti.length; i++) {
+          if (iscritti[i] === val) {
+            found = true;
+            break;
+          }
+        }
         showResult(found, val);
       } catch {
         // già gestito
@@ -280,7 +287,7 @@
         await initCamera();
         requestAnimationFrame(tick);
       } catch {
-        // errori già mostrati
+        // errori già gestiti
       }
     });
   })();
