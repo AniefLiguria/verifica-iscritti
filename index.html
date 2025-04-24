@@ -70,7 +70,7 @@
   <!-- Logo e Versione -->
   <img id="logo" src="logo.png" alt="Logo ANIEF"
        loading="lazy" onerror="this.style.display='none'">
-  <div id="version">v1.3.3</div>
+  <div id="version">v1.3.4</div>
 
   <!-- Loader -->
   <div id="loader">
@@ -94,8 +94,8 @@
     'use strict';
 
     // ==== CONFIGURAZIONE ====
-    const DEBUG         = true;            // true per attivare logging a schermo
-    const APP_VERSION   = 'v1.3.3';
+    const DEBUG         = false;            // true per attivare logging a schermo
+    const APP_VERSION   = 'v1.3.4';
     const SHEET_CSV_URL = 'https://drive.google.com/file/d/1xG7CtEQTUZ61qqceo4CAzI-FA31qmuH3/view?usp=sharing';
     const CACHE_KEY     = 'iscrittiCache';
     const CACHE_VER_KEY = 'iscrittiCacheVer';
@@ -115,7 +115,7 @@
     let iscritti      = [];
     let isProcessing  = false;
 
-    // Imposta versione
+    // Visualizza la versione
     versionDom.textContent = APP_VERSION;
 
     // Funzione di logging
@@ -129,11 +129,13 @@
       debugPanel.scrollTop = debugPanel.scrollHeight;
     }
 
+    // Mostra/nasconde loader
     function showLoader(show) {
       loader.style.display = show ? 'flex' : 'none';
       if (!show) spinner.style.display = 'none';
     }
 
+    // Inizializza fotocamera
     async function initCamera() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
@@ -147,6 +149,7 @@
       }
     }
 
+    // Carica e parsifica CSV con caching e spinner
     async function loadSheetData() {
       // Usa cache se valida
       const cachedVer = localStorage.getItem(CACHE_VER_KEY);
@@ -219,10 +222,11 @@
       }
     }
 
-    function showResult(ok) {
-      document.body.style.background = ok ? '#2ECC71' : '#E74C3C';
-      message.textContent = ok ? 'ISCRITTO' : 'NON ISCRITTO';
-      debugLog('🔍 Risultato verifica:', ok);
+    // Mostra risultato: ISCRITTO se **non** è nella lista
+    function showResult(iscrittibile) {
+      document.body.style.background = iscrittibile ? '#2ECC71' : '#E74C3C';
+      message.textContent = iscrittibile ? 'ISCRITTO' : 'NON ISCRITTO';
+      debugLog('🔍 Verifica NON contenimento:', iscrittibile);
     }
 
     function showError(txt) {
@@ -231,6 +235,7 @@
       debugLog('🚨 Errore:', txt);
     }
 
+    // Loop scansione QR
     function tick() {
       if (video.readyState === video.HAVE_ENOUGH_DATA) {
         canvas.width  = video.videoWidth;
@@ -246,16 +251,15 @@
       requestAnimationFrame(tick);
     }
 
+    // Gestione singolo QR: verifica **assenza**
     async function handleQR(val) {
       debugLog('🎯 QR letto:', val);
       try {
-        if (!iscritti.length) {
-          await loadSheetData();
-        }
-        const found = iscritti.includes(val);
-        showResult(found);
+        if (!iscritti.length) await loadSheetData();
+        const notPresent = !iscritti.includes(val);
+        showResult(notPresent);
       } catch {
-        // gestito
+        // già gestito
       } finally {
         setTimeout(() => {
           isProcessing = false;
@@ -265,12 +269,13 @@
       }
     }
 
+    // Avvio
     window.addEventListener('load', async () => {
       try {
         await initCamera();
         requestAnimationFrame(tick);
       } catch {
-        // errori già mostrati
+        // errori già gestiti
       }
     });
   })();
