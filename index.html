@@ -13,10 +13,10 @@
       transition: background 0.5s;
       position: relative; overflow: hidden;
     }
-    #logo { position: absolute; top:1em; left:1em; width:80px; }
-    #version { position: absolute; bottom:1em; right:1em; color:#555; }
+    #logo { position:absolute; top:1em; left:1em; width:80px; }
+    #version { position:absolute; bottom:1em; right:1em; color:#555; }
     #loader {
-      position: absolute; top:1em; right:1em;
+      position:absolute; top:1em; right:1em;
       display:none; align-items:center; color:#555;
     }
     #loader-text { margin-right:.5em; }
@@ -44,7 +44,7 @@
 </head>
 <body>
   <img id="logo" src="logo.png" alt="Logo ANIEF" onerror="this.style.display='none'">
-  <div id="version">v1.3.7</div>
+  <div id="version">v1.3.9</div>
 
   <div id="loader">
     <span id="loader-text">Caricamento dati… 0%</span>
@@ -62,9 +62,9 @@
     'use strict';
 
     const DEBUG         = true;
-    const APP_VERSION   = 'v1.3.7';
-    // Usa qui un URL CSV CORRETTO (pubb. con Google Sheets o su GH Pages)
-    const SHEET_CSV_URL = 'https://drive.google.com/file/d/1xG7CtEQTUZ61qqceo4CAzI-FA31qmuH3/view?usp=drive_link';
+    const APP_VERSION   = 'v1.3.9';
+    // link diretto di download da Drive
+    const SHEET_CSV_URL = 'https://drive.google.com/uc?export=download&id=1xG7CtEQTUZ61qqceo4CAzI-FA31qmuH3';
     const CACHE_KEY     = 'iscrittiCache';
     const CACHE_VER_KEY = 'iscrittiCacheVer';
 
@@ -100,8 +100,8 @@
 
     async function initCamera() {
       try {
-        const s = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
-        video.srcObject = s;
+        const stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment'} });
+        video.srcObject = stream;
         await video.play();
       } catch (e) {
         debugLog('Errore camera', e);
@@ -111,13 +111,12 @@
     }
 
     async function loadSheetData() {
-      // cache check
-      const v = localStorage.getItem(CACHE_VER_KEY);
-      const d = localStorage.getItem(CACHE_KEY);
-      if (d && v === APP_VERSION) {
-        const arr = JSON.parse(d);
-        iscrittiSet = new Set(arr);
-        debugLog('Usata cache, size=', iscrittiSet.size, arr.slice(0,10));
+      // cache se valida
+      const ver = localStorage.getItem(CACHE_VER_KEY);
+      const data = localStorage.getItem(CACHE_KEY);
+      if (data && ver === APP_VERSION) {
+        iscrittiSet = new Set(JSON.parse(data));
+        debugLog('Usata cache, elementi=', iscrittiSet.size);
         return;
       }
 
@@ -126,7 +125,9 @@
 
       try {
         const resp = await fetch(SHEET_CSV_URL);
-        if (!resp.ok) throw new Error(resp.status);
+        if (!resp.ok) throw new Error(`Status ${resp.status}`);
+        debugLog('Fetch CSV OK');
+
         const length = Number(resp.headers.get('content-length'));
         const reader = resp.body.getReader();
         const chunks = [];
@@ -138,8 +139,8 @@
           spinner.style.display = 'block';
         }
 
-        while(true) {
-          const {done,value} = await reader.read();
+        while (true) {
+          const { done, value } = await reader.read();
           if (done) break;
           chunks.push(value);
           received += value.length;
@@ -149,25 +150,25 @@
           }
         }
 
-        const buf = new Uint8Array(received);
-        let off=0;
-        for(const c of chunks){ buf.set(c, off); off+=c.length; }
-        const text = new TextDecoder('utf-8').decode(buf);
+        // decode
+        const buf = new Uint8Array(received), decoder = new TextDecoder('utf-8');
+        let off = 0;
+        for (const c of chunks) { buf.set(c, off); off += c.length; }
+        const text = decoder.decode(buf);
 
         const lines = text.trim().split(/\r?\n/).filter(l=>l.trim());
         const hasHeader = lines[0].toUpperCase()==='TESSERA';
-        const vals = (hasHeader?lines.slice(1):lines)
-                      .map(l=>l.trim().replace(/^\uFEFF/,''));
-        debugLog('Parsed count=', vals.length, 'sample=', vals.slice(0,10));
+        const vals = (hasHeader?lines.slice(1):lines).map(l=>l.trim().replace(/^\uFEFF/,''));
+        debugLog('Parsed count=', vals.length);
 
         iscrittiSet = new Set(vals);
         localStorage.setItem(CACHE_KEY, JSON.stringify(vals));
         localStorage.setItem(CACHE_VER_KEY, APP_VERSION);
 
-      } catch(e) {
-        debugLog('Errore fetch/parsing', e);
-        showError('Errore caricamento CSV');
-        throw e;
+      } catch (err) {
+        debugLog('Errore loadSheetData:', err);
+        showError(`Errore CSV: ${err.message}`);
+        throw err;
       } finally {
         loaderText.style.display = '';
         showLoader(false);
@@ -207,11 +208,10 @@
     }
 
     async function handleQR(raw) {
-      debugLog('QR raw:', JSON.stringify(raw));
+      debugLog('QR raw:', raw);
       try {
         if (!iscrittiSet) await loadSheetData();
-        const normalized = raw.replace(/\D/g,''); // se numerico
-        const key = iscrittiSet.has(raw) ? raw : (iscrittiSet.has(normalized)?normalized:raw);
+        const key = raw.trim();
         const found = iscrittiSet.has(key);
         showResult(found, key);
       } catch {
@@ -225,7 +225,7 @@
       }
     }
 
-    window.addEventListener('load',async()=>{
+    window.addEventListener('load', async ()=>{
       await initCamera();
       requestAnimationFrame(tick);
     });
