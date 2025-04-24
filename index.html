@@ -11,6 +11,19 @@
       display: flex; align-items: center; justify-content: center;
       font-family: sans-serif;
       transition: background 0.5s;
+      position: relative;
+      overflow: hidden;
+    }
+    #logo {
+      position: absolute;
+      top: 1em; left: 1em;
+      width: 80px;
+      height: auto;
+    }
+    #version {
+      position: absolute;
+      bottom: 1em; right: 1em;
+      font-size: 0.9em; color: #555;
     }
     #message {
       position: absolute;
@@ -29,6 +42,12 @@
   </style>
 </head>
 <body>
+  <!-- Logo ANIEF -->
+  <img id="logo" src="https://drive.google.com/uc?export=download&id=1rUXfMi2kYlvT87wCUhxJGvZ0eYdKW3DZ" alt="Logo ANIEF">
+
+  <!-- Versione App -->
+  <div id="version">v1.0.0</div>
+
   <div id="loader">Caricamento dati…</div>
   <video id="video" autoplay playsinline></video>
   <canvas id="canvas" hidden></canvas>
@@ -42,7 +61,13 @@
   (function(){
     'use strict';
 
+    // Numero di versione (aggiorna qui per le nuove release)
+    const APP_VERSION = 'v1.0.0';
+    document.getElementById('version').textContent = APP_VERSION;
+
+    // Link di download diretto al CSV su Google Drive
     const SHEET_CSV_URL = 'https://drive.google.com/uc?export=download&id=1xG7CtEQTUZ61qqceo4CAzI-FA31qmuH3';
+
     const video    = document.getElementById('video');
     const canvas   = document.getElementById('canvas');
     const ctx      = canvas.getContext('2d');
@@ -51,7 +76,7 @@
     let isProcessing = false;
     let iscritti = [];
 
-    // Mostra o nasconde loader
+    // Mostra o nasconde il loader
     function setLoading(on) {
       loader.style.display = on ? 'block' : 'none';
     }
@@ -78,11 +103,10 @@
             download: true,
             header: true,
             skipEmptyLines: true,
-            complete: results => resolve(results),
-            error: err => reject(err)
+            complete: resolve,
+            error: reject
           });
         });
-        // Filtra righe senza TESSERA e normalizza a stringa
         iscritti = results.data
           .map(r => ({ TESSERA: String(r.TESSERA).trim() }))
           .filter(r => r.TESSERA);
@@ -133,7 +157,6 @@
       } catch {
         // errore già gestito in loadSheetData
       } finally {
-        // reset dopo 5s
         setTimeout(() => {
           isProcessing = false;
           message.textContent = 'Inquadra un QR code…';
@@ -148,7 +171,7 @@
         await initCamera();
         requestAnimationFrame(tick);
       } catch {
-        // nulla: errori già mostrati
+        // errori già notificati
       }
     });
   })();
