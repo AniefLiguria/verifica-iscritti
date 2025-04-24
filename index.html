@@ -2,7 +2,7 @@
 <html lang="it">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Verifica Iscrizione</title>
   <style>
     html, body {
@@ -11,52 +11,51 @@
       display: flex; align-items: center; justify-content: center;
       font-family: sans-serif;
       transition: background 0.5s;
-      position: relative;
-      overflow: hidden;
+      position: relative; overflow: hidden;
     }
     #logo {
-      position: absolute;
-      top: 1em; left: 1em;
+      position: absolute; top: 1em; left: 1em;
       width: 80px; height: auto;
     }
     #version {
-      position: absolute;
-      bottom: 1em; right: 1em;
+      position: absolute; bottom: 1em; right: 1em;
       font-size: 0.9em; color: #555;
     }
+    #loader {
+      position: absolute; top: 1em; right: 1em;
+      font-size: 0.9em; color: #555;
+      display: none;
+    }
     #message {
-      position: absolute;
-      top: 50%; transform: translateY(-50%);
+      position: absolute; top: 50%; transform: translateY(-50%);
       font-size: 2em; color: white;
       text-shadow: 0 0 5px rgba(0,0,0,0.5);
       text-align: center; padding: 0 1em;
-    }
-    #loader {
-      position: absolute;
-      top: 1em; right: 1em;
-      font-size: 0.9em; color: #555;
     }
     video { display: none; }
   </style>
 </head>
 <body>
-  <img id="logo" src="logo.png" alt="Logo ANIEF" loading="lazy"
-       onerror="this.style.display='none'; console.warn('Logo non trovato');">
-  <div id="version">v1.0.0</div>
-  <div id="loader">Caricamento dati…</div>
+  <!-- Logo e Versione -->
+  <img id="logo" src="logo.png" alt="Logo ANIEF"
+       loading="lazy" onerror="this.style.display='none'">
+  <div id="version">v1.2.0</div>
+
+  <!-- Loader e Scanner -->
+  <div id="loader">Caricamento dati… 0%</div>
   <video id="video" autoplay playsinline></video>
   <canvas id="canvas" hidden></canvas>
   <div id="message">Inquadra un QR code…</div>
 
+  <!-- Librerie -->
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js"></script>
 
   <script>
   (function(){
     'use strict';
 
-    const APP_VERSION   = 'v1.1.0';
-    const SHEET_CSV_URL = 'https://drive.google.com/uc?export=download&id=1xG7CtEQTUZ61qqceo4CAzI-FA31qmuH3';
+    const APP_VERSION   = 'v1.2.0';
+    const SHEET_CSV_URL = 'iscritti.csv';  // file nel repo root
 
     const logo    = document.getElementById('logo');
     const version = document.getElementById('version');
@@ -66,18 +65,24 @@
     const ctx     = canvas.getContext('2d');
     const message = document.getElementById('message');
 
+    let iscritti = [];
     let isProcessing = false;
-    let iscritti     = [];
 
+    // Imposta versione
     version.textContent = APP_VERSION;
 
-    function setLoading(active) {
+    // Mostra/nasconde loader
+    function setLoading(active, text = '') {
       loader.style.display = active ? 'block' : 'none';
+      if (text) loader.textContent = text;
     }
 
+    // Inizializza fotocamera
     async function initCamera() {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment' }
+        });
         video.srcObject = stream;
         await video.play();
       } catch (err) {
@@ -87,51 +92,46 @@
       }
     }
 
-    // Carica CSV con fetch+stream per mostrare percentuale
+    // Carica e parsifica CSV “one-per-line”
     async function loadSheetData() {
-      setLoading(true);
-      loader.textContent = 'Caricamento dati… 0%';
+      setLoading(true, 'Caricamento dati… 0%');
       try {
         const resp = await fetch(SHEET_CSV_URL);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const contentLength = resp.headers.get('content-length');
+        const length = Number(resp.headers.get('content-length'));
         const reader = resp.body.getReader();
         const chunks = [];
         let received = 0;
 
+        // Leggi a pezzi e aggiorna percentuale
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
           chunks.push(value);
           received += value.length;
-          if (contentLength) {
-            const percent = Math.min(100, Math.round(received / contentLength * 100));
-            loader.textContent = `Caricamento dati… ${percent}%`;
+          if (length) {
+            const pct = Math.min(100, Math.round(received / length * 100));
+            loader.textContent = `Caricamento dati… ${pct}%`;
           }
         }
 
-        // Combina e decodifica
-        let csvText;
-        if (chunks.length === 1) {
-          csvText = new TextDecoder('utf-8').decode(chunks[0]);
-        } else {
-          const all = new Uint8Array(received);
-          let pos = 0;
-          for (const c of chunks) {
-            all.set(c, pos);
-            pos += c.length;
-          }
-          csvText = new TextDecoder('utf-8').decode(all);
+        // Decodifica testo
+        const data = new Uint8Array(received);
+        let offset = 0;
+        for (const chunk of chunks) {
+          data.set(chunk, offset);
+          offset += chunk.length;
         }
+        const text = new TextDecoder('utf-8').decode(data);
 
-        // Parsing CSV in memoria
-        const results = Papa.parse(csvText, {
-          header: true,
-          skipEmptyLines: true
-        });
-        iscritti = results.data
-          .map(r => ({ TESSERA: String(r.TESSERA).trim() }))
-          .filter(r => r.TESSERA);
+        // Split su righe, filtra vuote
+        const lines = text.trim().split(/\r?\n/).filter(l => l.trim());
+
+        // Rimuovi header se presente
+        const hasHeader = lines[0].toUpperCase() === 'TESSERA';
+        const values = hasHeader ? lines.slice(1) : lines;
+
+        iscritti = values.map(v => v.trim());
 
       } catch (err) {
         console.error(err);
@@ -142,16 +142,19 @@
       }
     }
 
+    // Mostra risultato
     function showResult(ok) {
       document.body.style.background = ok ? '#2ECC71' : '#E74C3C';
       message.textContent = ok ? 'ISCRITTO' : 'NON ISCRITTO';
     }
 
+    // Mostra errore
     function showError(txt) {
       document.body.style.background = '#555';
       message.textContent = txt;
     }
 
+    // Loop di scansione
     function tick() {
       if (video.readyState === video.HAVE_ENOUGH_DATA) {
         canvas.width  = video.videoWidth;
@@ -167,15 +170,16 @@
       requestAnimationFrame(tick);
     }
 
+    // Gestione singolo QR
     async function handleQR(val) {
       try {
         if (!iscritti.length) {
           await loadSheetData();
         }
-        const found = iscritti.some(r => r.TESSERA === val);
+        const found = iscritti.includes(val);
         showResult(found);
       } catch {
-        // errori già notificati
+        // errore già notificato
       } finally {
         setTimeout(() => {
           isProcessing = false;
@@ -185,12 +189,13 @@
       }
     }
 
+    // Avvio
     window.addEventListener('load', async () => {
       try {
         await initCamera();
         requestAnimationFrame(tick);
       } catch {
-        // già gestito
+        // errori già gestiti
       }
     });
   })();
