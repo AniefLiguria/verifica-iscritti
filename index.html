@@ -70,7 +70,7 @@
   <!-- Logo e Versione -->
   <img id="logo" src="logo.png" alt="Logo ANIEF"
        loading="lazy" onerror="this.style.display='none'">
-  <div id="version">v1.3.4</div>
+  <div id="version">v1.3.5</div>
 
   <!-- Loader -->
   <div id="loader">
@@ -95,7 +95,7 @@
 
     // ==== CONFIGURAZIONE ====
     const DEBUG         = false;            // true per attivare logging a schermo
-    const APP_VERSION   = 'v1.3.4';
+    const APP_VERSION   = 'v1.3.5';
     const SHEET_CSV_URL = 'https://drive.google.com/file/d/1xG7CtEQTUZ61qqceo4CAzI-FA31qmuH3/view?usp=sharing';
     const CACHE_KEY     = 'iscrittiCache';
     const CACHE_VER_KEY = 'iscrittiCacheVer';
@@ -222,11 +222,16 @@
       }
     }
 
-    // Mostra risultato: ISCRITTO se **non** è nella lista
-    function showResult(iscrittibile) {
-      document.body.style.background = iscrittibile ? '#2ECC71' : '#E74C3C';
-      message.textContent = iscrittibile ? 'ISCRITTO' : 'NON ISCRITTO';
-      debugLog('🔍 Verifica NON contenimento:', iscrittibile);
+    // Mostra risultato: ISCRITTO con il numero, oppure NON ISCRITTO
+    function showResult(found, val) {
+      if (found) {
+        document.body.style.background = '#2ECC71';
+        message.textContent = `ISCRITTO: ${val}`;
+      } else {
+        document.body.style.background = '#E74C3C';
+        message.textContent = 'NON ISCRITTO';
+      }
+      debugLog('🔍 Verifica:', found ? 'trovato' : 'non trovato', val);
     }
 
     function showError(txt) {
@@ -251,13 +256,13 @@
       requestAnimationFrame(tick);
     }
 
-    // Gestione singolo QR: verifica **assenza**
+    // Gestione singolo QR
     async function handleQR(val) {
       debugLog('🎯 QR letto:', val);
       try {
         if (!iscritti.length) await loadSheetData();
-        const notPresent = !iscritti.includes(val);
-        showResult(notPresent);
+        const found = iscritti.includes(val);
+        showResult(found, val);
       } catch {
         // già gestito
       } finally {
@@ -275,7 +280,7 @@
         await initCamera();
         requestAnimationFrame(tick);
       } catch {
-        // errori già gestiti
+        // errori già mostrati
       }
     });
   })();
