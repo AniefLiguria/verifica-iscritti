@@ -8,54 +8,58 @@
     html, body {
       margin: 0; padding: 0;
       width: 100%; height: 100%;
-      display: flex; align-items: center; justify-content: center;
       font-family: sans-serif;
       position: relative; overflow: hidden;
-      /* Background iniziale: istruzioni */
-      background: url('istruzioni.jpg') center/cover no-repeat;
-      transition: background-color 0.5s, background-image 0.5s;
+      background: #000;
     }
-    #logo { position:absolute; top:1em; left:1em; width:80px; }
-    #version { position:absolute; bottom:1em; right:1em; color:#555; }
+    /* Live preview a tutto schermo */
+    #video, #preview {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      z-index: 0;
+    }
+    /* Nascondi preview di freeze all’avvio */
+    #preview { display: none; }
+    #logo { position:absolute; top:1em; left:1em; width:80px; z-index:2; }
+    #version { position:absolute; bottom:1em; right:1em; color:#fff; z-index:2; }
     #loader {
       position:absolute; top:1em; right:1em;
-      display:none; align-items:center; color:#555;
+      display:none; align-items:center; color:#fff; z-index:2;
     }
     #loader-text { margin-right:.5em; }
     #spinner {
       width:16px; height:16px;
-      border:2px solid #ccc; border-top-color:#333;
+      border:2px solid #ccc; border-top-color:#fff;
       border-radius:50%; animation:spin 1s linear infinite;
       display:none;
     }
     @keyframes spin { to { transform:rotate(360deg); } }
     #message {
-      position:absolute; top:50%; transform:translateY(-50%);
+      position:absolute; top:50%; left:50%;
+      transform:translate(-50%, -50%);
       font-size:2em; color:white; text-align:center;
-      text-shadow:0 0 5px rgba(0,0,0,0.5); padding:0 1em;
+      text-shadow:0 0 5px rgba(0,0,0,0.7);
       white-space: pre-line;
+      z-index:2;
     }
-    #debug {
-      position:absolute; bottom:2em; left:1em;
-      width:300px; max-height:30%; overflow-y:auto;
-      background:rgba(0,0,0,0.7); color:#0f0;
-      font-size:.75em; line-height:1.2; padding:.5em;
-      display:none; z-index:999;
-    }
-    video { display:none; }
+    #debug { display:none; }
   </style>
 </head>
 <body>
+  <video id="video" autoplay playsinline></video>
+  <canvas id="preview"></canvas>
+  <canvas id="canvas" hidden></canvas>
+
   <img id="logo" src="logo.png" alt="Logo ANIEF" onerror="this.style.display='none'">
-  <div id="version">v1.4.2</div>
+  <div id="version">v1.4.3</div>
 
   <div id="loader">
     <span id="loader-text">Caricamento dati… 0%</span>
     <div id="spinner"></div>
   </div>
 
-  <video id="video" autoplay playsinline></video>
-  <canvas id="canvas" hidden></canvas>
   <div id="message">Inquadra un QR code…</div>
   <div id="debug"></div>
 
@@ -65,8 +69,8 @@
     'use strict';
 
     const DEBUG         = false;
-    const APP_VERSION   = 'v1.4.2';
-    const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQvb_6MieMU47M51EmRjlX_AFHSXIFtn0K9PJwGNz2gJYSE0WEMFdgoa7GYwsQsQYYhUHSO-r_RFAvC/pub?gid=1662775114&single=true&output=csv';
+    const APP_VERSION   = 'v1.4.3';
+    const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/.../pub?output=csv';
     const CACHE_KEY     = 'iscrittiCache';
     const CACHE_VER_KEY = 'iscrittiCacheVer';
 
@@ -75,134 +79,68 @@
     const loaderText = document.getElementById('loader-text');
     const spinner    = document.getElementById('spinner');
     const video      = document.getElementById('video');
+    const preview    = document.getElementById('preview');
     const canvas     = document.getElementById('canvas');
     const ctx        = canvas.getContext('2d');
-    const message    = document.getElementById('message');
-    const debugPanel = document.getElementById('debug');
+    const msg        = document.getElementById('message');
 
     let iscrittiSet  = null;
     let isProcessing = false;
 
     versionDom.textContent = APP_VERSION;
 
-    function debugLog(...args) {
-      console.log(...args);
-      if (!DEBUG) return;
-      debugPanel.style.display = 'block';
-      const line = document.createElement('div');
-      line.textContent = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
-      debugPanel.appendChild(line);
-      debugPanel.scrollTop = debugPanel.scrollHeight;
+    function showLoader(on){ loader.style.display = on ? 'flex' : 'none'; spinner.style.display = on ? 'block' : 'none'; }
+    function showError(text){
+      preview.style.display = 'none';
+      video.style.display = 'block';
+      document.body.style.backgroundColor = '#555';
+      msg.textContent = text;
     }
 
-    function showLoader(on) {
-      loader.style.display = on ? 'flex' : 'none';
-      if (!on) spinner.style.display = 'none';
+    async function initCamera(){
+      const stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+      video.srcObject = stream;
+      await video.play();
     }
 
-    async function initCamera() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment'} });
-        video.srcObject = stream;
-        await video.play();
-      } catch (e) {
-        debugLog('Errore camera', e);
-        showError('Impossibile accedere alla fotocamera');
-        throw e;
-      }
-    }
-
-    async function loadSheetData() {
+    async function loadSheetData(){
       const ver = localStorage.getItem(CACHE_VER_KEY);
       const data = localStorage.getItem(CACHE_KEY);
-      if (data && ver === APP_VERSION) {
+      if(data && ver===APP_VERSION){
         iscrittiSet = new Set(JSON.parse(data));
-        debugLog('Cache usata, elementi=', iscrittiSet.size);
         return;
       }
-
       showLoader(true);
-      loaderText.textContent = 'Caricamento dati… 0%';
-
-      try {
+      try{
         const resp = await fetch(SHEET_CSV_URL);
-        if (!resp.ok) throw new Error(`Status ${resp.status}`);
-        debugLog('Fetch CSV OK');
-
-        const length = Number(resp.headers.get('content-length'));
-        const reader = resp.body.getReader();
-        const chunks = [];
-        let received = 0;
-
-        const useSpinner = !length;
-        if (useSpinner) {
-          loaderText.style.display = 'none';
-          spinner.style.display = 'block';
-        }
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          chunks.push(value);
-          received += value.length;
-          if (length) {
-            const pct = Math.round(received/length*100);
-            loaderText.textContent = `Caricamento dati… ${pct}%`;
-          }
-        }
-
-        const buf = new Uint8Array(received), dec = new TextDecoder('utf-8');
-        let off = 0;
-        for (const c of chunks) { buf.set(c, off); off += c.length; }
-        const text = dec.decode(buf);
-
-        const lines = text.trim().split(/\r?\n/).filter(l => l.trim());
-        const hasHeader = lines[0].toUpperCase() === 'TESSERA';
-        const vals = (hasHeader ? lines.slice(1) : lines).map(l => l.trim().replace(/^\uFEFF/, ''));
-        debugLog('Parsed count=', vals.length);
-
+        const txt = await resp.text();
+        const lines = txt.trim().split(/\r?\n/).slice(1);
+        const vals = lines.map(l=>l.trim().replace(/^\uFEFF/,''));
         iscrittiSet = new Set(vals);
         localStorage.setItem(CACHE_KEY, JSON.stringify(vals));
         localStorage.setItem(CACHE_VER_KEY, APP_VERSION);
-
-      } catch (err) {
-        debugLog('Errore loadSheetData:', err);
-        showError(`Errore CSV: ${err.message}`);
-        throw err;
-      } finally {
-        loaderText.style.display = '';
-        showLoader(false);
-      }
+      }finally{ showLoader(false); }
     }
 
-    function showResult(found, val) {
-      // Rimuove background-image istruzioni
-      document.body.style.backgroundImage = 'none';
-      if (found) {
+    function showResult(found, tessera){
+      preview.style.display = 'none';
+      if(found){
         document.body.style.backgroundColor = '#2ECC71';
-        message.textContent = `ISCRITTO\nTessera n. ${val}`;
+        msg.textContent = `ISCRITTO\nTessera n. ${tessera}`;
       } else {
         document.body.style.backgroundColor = '#E74C3C';
-        message.textContent = 'NON ISCRITTO';
+        msg.textContent = 'NON ISCRITTO';
       }
-      debugLog('Verifica:', found, val);
     }
 
-    function showError(txt) {
-      document.body.style.backgroundImage = 'none';
-      document.body.style.backgroundColor = '#555';
-      message.textContent = txt;
-      debugLog('Error:', txt);
-    }
-
-    function tick() {
-      if (video.readyState === video.HAVE_ENOUGH_DATA) {
-        canvas.width  = video.videoWidth;
-        canvas.height = video.videoHeight;
-        ctx.drawImage(video, 0, 0);
-        const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' });
-        if (code && !isProcessing) {
+    function tick(){
+      if(video.readyState===video.HAVE_ENOUGH_DATA){
+        canvas.width = video.videoWidth;
+        canvas.height= video.videoHeight;
+        ctx.drawImage(video,0,0);
+        const imgData = ctx.getImageData(0,0,canvas.width,canvas.height);
+        const code = jsQR(imgData.data,imgData.width,imgData.height,{inversionAttempts:'attemptBoth'});
+        if(code && !isProcessing){
           isProcessing = true;
           handleQR(code.data.trim());
         }
@@ -210,44 +148,41 @@
       requestAnimationFrame(tick);
     }
 
-    async function handleQR(raw) {
-      debugLog('QR raw:', raw);
-      try {
-        if (!iscrittiSet) await loadSheetData();
-    
-        // 1) Parsifica la stringa in coppie chiave:valore
-        const fields = {};
-        raw.split(';').forEach(pair => {
-          const [key, ...rest] = pair.split(':');
-          fields[key.trim().toLowerCase()] = rest.join(':').trim();
+    async function handleQR(raw){
+      // 1) preview freeze
+      preview.width=video.videoWidth; preview.height=video.videoHeight;
+      const pctx = preview.getContext('2d');
+      pctx.drawImage(video,0,0);
+      preview.style.display = 'block';
+      video.style.display = 'none';
+      await new Promise(r=>setTimeout(r,1000));
+
+      // 2) verifica tessera
+      try{
+        if(!iscrittiSet) await loadSheetData();
+        const parts = {};
+        raw.split(';').forEach(p=>{
+          const [k,v]=p.split(':');
+          parts[k.toLowerCase()] = v;
         });
-    
-        // 2) Prendi il numero di tessera
-        const tessera = fields['tessera'];
-        if (!tessera) {
-          showError('Formato QR non valido');
-          return;
-        }
-    
-        // 3) Verifica sul Set
-        const found = iscrittiSet.has(tessera);
-        showResult(found, tessera);
-    
-      } catch (err) {
-        // già notificato in loadSheetData
-      } finally {
-        setTimeout(() => {
-          isProcessing = false;
-          // ripristina schermata iniziale
-          document.body.style.background = `url('istruzioni.jpg') center/cover no-repeat`;
-          message.textContent = 'Inquadra un QR code…';
-        }, 5000);
-      }
+        const tessera = (parts['tessera']||'').trim();
+        const found   = iscrittiSet.has(tessera);
+        showResult(found,tessera);
+      }catch(e){ showError('Errore elaborazione'); }
+
+      // 3) reset live
+      setTimeout(()=>{
+        isProcessing = false;
+        preview.style.display = 'none';
+        video.style.display = 'block';
+        document.body.style.backgroundColor='';
+        msg.textContent='Inquadra un QR code…';
+      },5000);
     }
 
-    window.addEventListener('load', async () => {
+    window.addEventListener('load',async()=>{
       await initCamera();
-      requestAnimationFrame(tick);
+      tick();
     });
   })();
   </script>
