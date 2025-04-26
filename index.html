@@ -214,15 +214,31 @@
       debugLog('QR raw:', raw);
       try {
         if (!iscrittiSet) await loadSheetData();
-        const key = raw.trim();
-        const found = iscrittiSet.has(key);
-        showResult(found, key);
-      } catch {
-        // già mostrato
+    
+        // 1) Parsifica la stringa in coppie chiave:valore
+        const fields = {};
+        raw.split(';').forEach(pair => {
+          const [key, ...rest] = pair.split(':');
+          fields[key.trim().toLowerCase()] = rest.join(':').trim();
+        });
+    
+        // 2) Prendi il numero di tessera
+        const tessera = fields['tessera'];
+        if (!tessera) {
+          showError('Formato QR non valido');
+          return;
+        }
+    
+        // 3) Verifica sul Set
+        const found = iscrittiSet.has(tessera);
+        showResult(found, tessera);
+    
+      } catch (err) {
+        // già notificato in loadSheetData
       } finally {
         setTimeout(() => {
           isProcessing = false;
-          // ripristina istruzioni
+          // ripristina schermata iniziale
           document.body.style.background = `url('istruzioni.jpg') center/cover no-repeat`;
           message.textContent = 'Inquadra un QR code…';
         }, 5000);
