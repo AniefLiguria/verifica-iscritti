@@ -51,7 +51,6 @@
       font-size:.75em; line-height:1.2; padding:.5em;
       display:none; z-index:999;
     }
-    /* Rimuovi regola display:none su video per preview live */
   </style>
 </head>
 <body>
@@ -149,8 +148,9 @@
     }
 
     function showResult(found, tessera, nome, cognome) {
+      // nascondi live e preview per mostrare solo il colore
       preview.style.display = 'none';
-      video.style.display = 'block';
+      video.style.display = 'none';
       if (found) {
         document.body.style.backgroundColor = '#2ECC71';
         msg.textContent = `ISCRITTO\n${nome} ${cognome}\nTessera n. ${tessera}`;
@@ -183,7 +183,6 @@
     }
 
     async function handleQR(raw) {
-      // pulisci debug
       debugPanel.textContent = '';
       debugLog('QR raw:', raw);
 
@@ -202,11 +201,12 @@
         const parts = {};
         raw.split(';').forEach(p => {
           const [k, v] = p.split(/:(.+)/);
-          parts[k.toLowerCase()] = v;
+          parts[k.toLowerCase()] = v.trim();
         });
-        const tessera = parts['tessera'].trim();
-        const nome    = parts['nome'].trim();
-        const cognome = parts['cognome'].trim();
+        // controlli extra: estrai valori
+        const tessera = (parts['tessera'] || '').trim();
+        const nome    = (parts['nome'] || '').trim();
+        const cognome = (parts['cognome'] || '').trim();
         debugLog('Valori estratti:', tessera, nome, cognome);
         const found = iscrittiSet.has(tessera);
         showResult(found, tessera, nome, cognome);
