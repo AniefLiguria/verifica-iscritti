@@ -3,7 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Verifica Iscrizione</title>
+  <title>Verifica Iscritti ANIEF</title>
+  <!-- Web App Manifest -->
+  <link rel="manifest" href="/manifest.json">
+  <!-- Favicon & App Icons -->
+  <link rel="icon" href="logo.png" type="image/png">
+  <link rel="apple-touch-icon" href="logo.png">
+  <meta name="apple-mobile-web-app-title" content="Verifica Iscritti ANIEF">
+  <meta name="application-name" content="Verifica Iscritti ANIEF">
+  <meta name="theme-color" content="#2ECC71">
   <style>
     html, body {
       margin: 0; padding: 0;
@@ -148,11 +156,10 @@
     }
 
     function showResult(found, tessera, nome, cognome) {
-      // nascondi live e preview per mostrare solo il colore
       preview.style.display = 'none';
       video.style.display = 'none';
       if (found) {
-        document.body.style.backgroundColor = '#499330';
+        document.body.style.backgroundColor = '#2ECC71';
         msg.textContent = `ISCRITTO\n${nome} ${cognome}\nTessera n. ${tessera}`;
       } else {
         document.body.style.backgroundColor = '#E74C3C';
@@ -203,10 +210,9 @@
           const [k, v] = p.split(/:(.+)/);
           parts[k.toLowerCase()] = v.trim();
         });
-        // controlli extra: estrai valori
-        const tessera = (parts['tessera'] || '').trim();
-        const nome    = (parts['nome'] || '').trim();
-        const cognome = (parts['cognome'] || '').trim();
+        const tessera = parts['tessera'] || '';
+        const nome    = parts['nome'] || '';
+        const cognome = parts['cognome'] || '';
         debugLog('Valori estratti:', tessera, nome, cognome);
         const found = iscrittiSet.has(tessera);
         showResult(found, tessera, nome, cognome);
