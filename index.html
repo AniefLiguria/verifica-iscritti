@@ -51,7 +51,7 @@
       font-size:.75em; line-height:1.2; padding:.5em;
       display:none; z-index:999;
     }
-    video { display:none; }
+    /* Rimuovi regola display:none su video per preview live */
   </style>
 </head>
 <body>
@@ -60,7 +60,7 @@
   <canvas id="canvas" hidden></canvas>
 
   <img id="logo" src="logo.png" alt="Logo ANIEF" onerror="this.style.display='none'">
-  <div id="version">v1.4.4</div>
+  <div id="version">v1.4.5</div>
 
   <div id="loader">
     <span id="loader-text">Caricamento dati… 0%</span>
@@ -76,7 +76,7 @@
     'use strict';
 
     const DEBUG         = true;
-    const APP_VERSION   = 'v1.4.4';
+    const APP_VERSION   = 'v1.4.5';
     const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQvb_6MieMU47M51EmRjlX_AFHSXIFtn0K9PJwGNz2gJYSE0WEMFdgoa7GYwsQsQYYhUHSO-r_RFAvC/pub?gid=1662775114&single=true&output=csv';
     const CACHE_KEY     = 'iscrittiCache';
     const CACHE_VER_KEY = 'iscrittiCacheVer';
@@ -148,11 +148,12 @@
       }
     }
 
-    function showResult(found, tessera) {
+    function showResult(found, tessera, nome, cognome) {
       preview.style.display = 'none';
+      video.style.display = 'block';
       if (found) {
         document.body.style.backgroundColor = '#2ECC71';
-        msg.textContent = `ISCRITTO\nTessera n. ${tessera}`;
+        msg.textContent = `ISCRITTO\n${nome} ${cognome}\nTessera n. ${tessera}`;
       } else {
         document.body.style.backgroundColor = '#E74C3C';
         msg.textContent = 'NON ISCRITTO';
@@ -169,7 +170,7 @@
     function tick() {
       if (video.readyState === video.HAVE_ENOUGH_DATA) {
         canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
+        canvas.height= video.videoHeight;
         ctx.drawImage(video, 0, 0);
         const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const code = jsQR(imgData.data, imgData.width, imgData.height, { inversionAttempts: 'attemptBoth' });
@@ -182,11 +183,12 @@
     }
 
     async function handleQR(raw) {
+      // pulisci debug
       debugPanel.textContent = '';
       debugLog('QR raw:', raw);
 
       // 1) preview freeze
-      preview.width = video.videoWidth;
+      preview.width  = video.videoWidth;
       preview.height = video.videoHeight;
       const pctx = preview.getContext('2d');
       pctx.drawImage(video, 0, 0);
@@ -194,7 +196,7 @@
       video.style.display = 'none';
       await new Promise(r => setTimeout(r, 1000));
 
-      // 2) verifica tessera
+      // 2) parsing e verifica
       try {
         if (!iscrittiSet) await loadSheetData();
         const parts = {};
@@ -202,9 +204,12 @@
           const [k, v] = p.split(/:(.+)/);
           parts[k.toLowerCase()] = v;
         });
-        const tessera = (parts['tessera'] || '').trim();
+        const tessera = parts['tessera'].trim();
+        const nome    = parts['nome'].trim();
+        const cognome = parts['cognome'].trim();
+        debugLog('Valori estratti:', tessera, nome, cognome);
         const found = iscrittiSet.has(tessera);
-        showResult(found, tessera);
+        showResult(found, tessera, nome, cognome);
       } catch (e) {
         showError('Errore elaborazione');
       }
