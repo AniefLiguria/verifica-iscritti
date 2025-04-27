@@ -178,60 +178,65 @@
     }
 
     async function handleQR(raw) {
-      debugPanel.textContent = '';
-      debugLog('QR raw:', raw);
+  debugPanel.textContent = '';
+  debugLog('QR raw:', raw);
 
-      // 1) preview freeze
-      preview.width  = video.videoWidth;
-      preview.height = video.videoHeight;
-      const pctx     = preview.getContext('2d');
-      pctx.drawImage(video, 0, 0);
-      preview.style.display = 'block';
-      video.style.display   = 'none';
-      await new Promise(r => setTimeout(r, 1000));
+  // 1) Freeze preview
+  preview.width  = video.videoWidth;
+  preview.height = video.videoHeight;
+  const pctx = preview.getContext('2d');
+  pctx.drawImage(video, 0, 0);
+  preview.style.display = 'block';
+  video.style.display   = 'none';
+  await new Promise(r => setTimeout(r, 1000));
 
-      // 2) verifica
-      try {
-        // URL?
-        if (/^https?:\/\//i.test(raw)) {
-          showLoader(true);
-          debugLog('Chiamata proxy a URL esterno…');
-          const resp = await fetch(PROXY_URL + encodeURIComponent(raw));
-          debugLog('Proxy status:', resp.status);
-          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-          const txt = await resp.text();
-          debugLog('Proxy text:', txt);
-          const isRegola = /ISCRIZIONE ANIEF IN REGOLA/i.test(txt);
-          showResult(isRegola);
-        } else {
-          // dati interni
-          if (!iscrittiSet) await loadSheetData();
-          const parts = {};
-          raw.split(';').forEach(p => {
-            const [k,v] = p.split(/:(.+)/);
-            parts[k.trim().toLowerCase()] = v.trim();
-          });
-          const tessera = parts['tessera']  || '';
-          const nome    = parts['nome']     || '';
-          const cognome = parts['cognome']  || '';
-          debugLog('Valori estratti:', tessera, nome, cognome);
-          const found = iscrittiSet.has(tessera);
-          showResult(found, tessera, nome, cognome);
-        }
-      } catch (e) {
-        debugLog('Errore handleQR:', e);
-        showError('Errore elaborazione');
-      } finally {
-        showLoader(false);
-        setTimeout(() => {
-          isProcessing = false;
-          preview.style.display        = 'none';
-          video.style.display          = 'block';
-          document.body.style.backgroundColor = '';
-          msg.textContent              = 'Inquadra un QR code…';
-        }, 5000);
+  try {
+    if (/^https?:\/\//i.test(raw)) {
+      // URL‐flow
+      const urlToFetch = PROXY_URL + encodeURIComponent(raw);
+      debugLog('Proxy URL:', urlToFetch);
+      showLoader(true);
+
+      const resp = await fetch(urlToFetch);
+      debugLog('Fetch response object:', resp);
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
       }
+      const txt = await resp.text();
+      debugLog('Response text (first 200 chars):', txt.substring(0,200));
+
+      const isRegola = /ISCRIZIONE ANIEF IN REGOLA/i.test(txt);
+      showResult(isRegola);
+    } else {
+      // Data‐flow (come prima)
+      if (!iscrittiSet) await loadSheetData();
+      const parts = {};
+      raw.split(';').forEach(p => {
+        const [k, v] = p.split(/:(.+)/);
+        parts[k.trim().toLowerCase()] = v.trim();
+      });
+      const tessera = parts['tessera']  || '';
+      const nome    = parts['nome']     || '';
+      const cognome = parts['cognome']  || '';
+      debugLog('Valori estratti:', tessera, nome, cognome);
+      const found = iscrittiSet.has(tessera);
+      showResult(found, tessera, nome, cognome);
     }
+  } catch (e) {
+    debugLog('Errore in handleQR:', e);
+    showError(`Errore elaborazione: ${e.message}`);
+  } finally {
+    showLoader(false);
+    setTimeout(() => {
+      isProcessing = false;
+      preview.style.display        = 'none';
+      video.style.display          = 'block';
+      document.body.style.backgroundColor = '';
+      msg.textContent              = 'Inquadra un QR code…';
+    }, 5000);
+  }
+}
+
 
     window.addEventListener('load', async () => {
       await initCamera();
