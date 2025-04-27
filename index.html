@@ -48,7 +48,7 @@
   <canvas id="canvas" hidden></canvas>
 
   <img id="logo" src="logo.png" alt="Logo ANIEF" onerror="this.style.display='none'">
-  <div id="version">v1.5.1</div>
+  <div id="version">v1.5.2</div>
 
   <div id="loader">
     <span id="loader-text">Caricamento dati… 0%</span>
@@ -63,10 +63,11 @@
   (function(){
     'use strict';
 
-    const DEBUG         = true;
-    const APP_VERSION   = 'v1.5.1';
+    const DEBUG         = false;
+    const APP_VERSION   = 'v1.5.2';
     const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQvb_6MieMU47M51EmRjlX_AFHSXIFtn0K9PJwGNz2gJYSE0WEMFdgoa7GYwsQsQYYhUHSO-r_RFAvC/pub?gid=1662775114&single=true&output=csv';
-    const PROXY_URL     = 'https://api.allorigins.win/raw?url=';
+    // Usa AllOrigins JSON endpoint (gratuito, CORS-friendly)
+    const PROXY_URL     = 'https://api.allorigins.win/get?disableCache=true&url=';
     const CACHE_KEY     = 'iscrittiCache';
     const CACHE_VER_KEY = 'iscrittiCacheVer';
 
@@ -79,38 +80,26 @@
     const canvas     = document.getElementById('canvas');
     const ctx        = canvas.getContext('2d');
     const msg        = document.getElementById('message');
-    const debugPanel = document.getElementById('debug');
 
     let iscrittiSet  = null;
     let isProcessing = false;
 
     versionDom.textContent = APP_VERSION;
 
-    function debugLog(...args) {
-      console.log(...args);
-      if (!DEBUG) return;
-      debugPanel.style.display = 'block';
-      const line = document.createElement('div');
-      line.textContent = args.map(a=> typeof a==='string'?a:JSON.stringify(a)).join(' ');
-      debugPanel.appendChild(line);
-      debugPanel.scrollTop = debugPanel.scrollHeight;
-    }
-
     function showLoader(on) {
-      loader.style.display   = on ? 'flex' : 'none';
-      spinner.style.display  = on ? 'block': 'none';
+      loader.style.display  = on ? 'flex' : 'none';
+      spinner.style.display = on ? 'block' : 'none';
     }
     function showError(txt) {
-      preview.style.display  = 'none';
-      video.style.display    = 'block';
+      preview.style.display       = 'none';
+      video.style.display         = 'block';
       document.body.style.backgroundColor = '#555';
-      msg.textContent        = txt;
-      debugLog('Error:', txt);
+      msg.textContent             = txt;
     }
 
     async function initCamera() {
       try {
-        const s = await navigator.mediaDevices.getUserMedia({ video:{facingMode:'environment'} });
+        const s = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment'} });
         video.srcObject = s; await video.play();
       } catch {
         showError('Impossibile accedere alla fotocamera');
@@ -120,21 +109,19 @@
     async function loadSheetData() {
       const v = localStorage.getItem(CACHE_VER_KEY);
       const d = localStorage.getItem(CACHE_KEY);
-      if (d && v===APP_VERSION) {
+      if (d && v === APP_VERSION) {
         iscrittiSet = new Set(JSON.parse(d));
-        debugLog('Cache usata, elementi=', iscrittiSet.size);
         return;
       }
       showLoader(true);
       try {
-        const resp = await fetch(SHEET_CSV_URL);
-        const txt  = await resp.text();
-        const lines= txt.trim().split(/\r?\n/).slice(1);
-        const vals = lines.map(l=>l.trim().replace(/^\uFEFF/, ''));
+        const resp  = await fetch(SHEET_CSV_URL);
+        const text  = await resp.text();
+        const lines = text.trim().split(/\r?\n/).slice(1);
+        const vals  = lines.map(l=>l.trim().replace(/^\uFEFF/, ''));
         iscrittiSet = new Set(vals);
         localStorage.setItem(CACHE_KEY, JSON.stringify(vals));
         localStorage.setItem(CACHE_VER_KEY, APP_VERSION);
-        debugLog('CSV caricato, elementi=', iscrittiSet.size);
       } catch {
         showError('Errore caricamento CSV');
       } finally {
@@ -143,7 +130,7 @@
     }
 
     function showResult(found, tessera='', nome='', cognome='') {
-      preview.style.display = 'none';
+      preview.style.display       = 'none';
       if (found) {
         document.body.style.backgroundColor = '#2ECC71';
         msg.textContent = `ISCRITTO\n${nome} ${cognome}\nTessera n. ${tessera}`;
@@ -151,14 +138,13 @@
         document.body.style.backgroundColor = '#E74C3C';
         msg.textContent = 'NON ISCRITTO';
       }
-      debugLog('Risultato:', found, tessera, nome, cognome);
     }
 
     function tick() {
       if (video.readyState === video.HAVE_ENOUGH_DATA) {
         canvas.width  = video.videoWidth;
         canvas.height = video.videoHeight;
-        ctx.drawImage(video,0,0);
+        ctx.drawImage(video, 0, 0);
         const img  = ctx.getImageData(0,0,canvas.width,canvas.height);
         const code = jsQR(img.data, img.width, img.height, { inversionAttempts:'attemptBoth' });
         if (code && !isProcessing) {
@@ -170,59 +156,54 @@
     }
 
     async function handleQR(raw) {
-      debugPanel.textContent = '';
-      debugLog('QR raw:', raw);
-
+      // reset messaggi
+      msg.textContent = '';
       // freeze preview
       preview.width  = video.videoWidth;
       preview.height = video.videoHeight;
-      const pctx = preview.getContext('2d');
-      pctx.drawImage(video, 0, 0);
+      preview.getContext('2d').drawImage(video, 0, 0);
       preview.style.display = 'block';
       video.style.display   = 'none';
       await new Promise(r=>setTimeout(r,1000));
 
       try {
         if (/^https?:\/\//i.test(raw)) {
+          // URL–flow via AllOrigins JSON
           showLoader(true);
-          debugLog('Proxy fetch URL:', raw);
           const resp = await fetch(PROXY_URL + encodeURIComponent(raw));
-          debugLog('Proxy status:', resp.status);
-          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-          const txt = await resp.text();
-          debugLog('Proxy text:', txt.substring(0,200));
-          const isRegola = /ISCRIZIONE ANIEF IN REGOLA/i.test(txt);
-          showResult(isRegola);
+          const data = await resp.json();
+          const txt  = data.contents || '';
+          const isReg = /ISCRIZIONE ANIEF IN REGOLA/i.test(txt);
+          showResult(isReg);
         } else {
+          // Local data–flow
           if (!iscrittiSet) await loadSheetData();
           const parts = {};
-          raw.split(';').forEach(p=> {
+          raw.split(';').forEach(p => {
             const [k,v] = p.split(/:(.+)/);
             parts[k.trim().toLowerCase()] = v.trim();
           });
-          const tessera = parts['tessera']||'',
-                nome    = parts['nome']   ||'',
-                cognome = parts['cognome']||'';
-          debugLog('Valori estratti:', tessera, nome, cognome);
-          const found = iscrittiSet.has(tessera);
+          const tessera = parts['tessera']||'';
+          const nome    = parts['nome']   ||'';
+          const cognome = parts['cognome']||'';
+          const found   = iscrittiSet.has(tessera);
           showResult(found, tessera, nome, cognome);
         }
-      } catch (e) {
-        debugLog('Errore handleQR:', e);
-        showError(`Errore elaborazione: ${e.message}`);
+      } catch {
+        showError('Errore elaborazione');
       } finally {
         showLoader(false);
         setTimeout(()=>{
-          isProcessing       = false;
-          preview.style.display = 'none';
-          video.style.display   = 'block';
+          isProcessing            = false;
+          preview.style.display   = 'none';
+          video.style.display     = 'block';
           document.body.style.backgroundColor = '';
-          msg.textContent        = 'Inquadra un QR code…';
-        },5000);
+          msg.textContent         = 'Inquadra un QR code…';
+        }, 5000);
       }
     }
 
-    window.addEventListener('load',async()=> {
+    window.addEventListener('load', async ()=>{
       await initCamera();
       tick();
     });
