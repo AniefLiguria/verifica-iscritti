@@ -12,6 +12,7 @@
       position: relative; overflow: hidden;
       background: #000;
     }
+    /* Live preview a tutto schermo */
     #video, #preview {
       position: absolute; top: 0; left: 0;
       width: 100%; height: 100%;
@@ -48,7 +49,7 @@
   <canvas id="canvas" hidden></canvas>
 
   <img id="logo" src="logo.png" alt="Logo ANIEF" onerror="this.style.display='none'">
-  <div id="version">v1.5.2</div>
+  <div id="version">v1.6.0</div>
 
   <div id="loader">
     <span id="loader-text">Caricamento dati… 0%</span>
@@ -64,22 +65,21 @@
     'use strict';
 
     const DEBUG         = false;
-    const APP_VERSION   = 'v1.5.2';
+    const APP_VERSION   = 'v1.6.0';
     const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQvb_6MieMU47M51EmRjlX_AFHSXIFtn0K9PJwGNz2gJYSE0WEMFdgoa7GYwsQsQYYhUHSO-r_RFAvC/pub?gid=1662775114&single=true&output=csv';
-    // Usa AllOrigins JSON endpoint (gratuito, CORS-friendly)
-    const PROXY_URL     = 'https://api.allorigins.win/get?disableCache=true&url=';
     const CACHE_KEY     = 'iscrittiCache';
     const CACHE_VER_KEY = 'iscrittiCacheVer';
 
     const versionDom = document.getElementById('version');
     const loader     = document.getElementById('loader');
-    const loaderText = document.getElementById('loader-text');
     const spinner    = document.getElementById('spinner');
+    const loaderText = document.getElementById('loader-text');
     const video      = document.getElementById('video');
     const preview    = document.getElementById('preview');
     const canvas     = document.getElementById('canvas');
     const ctx        = canvas.getContext('2d');
     const msg        = document.getElementById('message');
+    const debugPanel = document.getElementById('debug');
 
     let iscrittiSet  = null;
     let isProcessing = false;
@@ -87,20 +87,23 @@
     versionDom.textContent = APP_VERSION;
 
     function showLoader(on) {
-      loader.style.display  = on ? 'flex' : 'none';
-      spinner.style.display = on ? 'block' : 'none';
+      loader.style.display   = on ? 'flex' : 'none';
+      spinner.style.display  = on ? 'block' : 'none';
+      loaderText.textContent = on ? 'Caricamento dati…' : '';
     }
+
     function showError(txt) {
-      preview.style.display       = 'none';
-      video.style.display         = 'block';
+      preview.style.display  = 'none';
+      video.style.display    = 'block';
       document.body.style.backgroundColor = '#555';
-      msg.textContent             = txt;
+      msg.textContent        = txt;
     }
 
     async function initCamera() {
       try {
         const s = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment'} });
-        video.srcObject = s; await video.play();
+        video.srcObject = s;
+        await video.play();
       } catch {
         showError('Impossibile accedere alla fotocamera');
       }
@@ -130,7 +133,7 @@
     }
 
     function showResult(found, tessera='', nome='', cognome='') {
-      preview.style.display       = 'none';
+      preview.style.display = 'none';
       if (found) {
         document.body.style.backgroundColor = '#2ECC71';
         msg.textContent = `ISCRITTO\n${nome} ${cognome}\nTessera n. ${tessera}`;
@@ -156,8 +159,6 @@
     }
 
     async function handleQR(raw) {
-      // reset messaggi
-      msg.textContent = '';
       // freeze preview
       preview.width  = video.videoWidth;
       preview.height = video.videoHeight;
@@ -167,32 +168,24 @@
       await new Promise(r=>setTimeout(r,1000));
 
       try {
-        if (/^https?:\/\//i.test(raw)) {
-          // URL–flow via AllOrigins JSON
-          showLoader(true);
-          const resp = await fetch(PROXY_URL + encodeURIComponent(raw));
-          const data = await resp.json();
-          const txt  = data.contents || '';
-          const isReg = /ISCRIZIONE ANIEF IN REGOLA/i.test(txt);
-          showResult(isReg);
-        } else {
-          // Local data–flow
-          if (!iscrittiSet) await loadSheetData();
-          const parts = {};
-          raw.split(';').forEach(p => {
-            const [k,v] = p.split(/:(.+)/);
-            parts[k.trim().toLowerCase()] = v.trim();
-          });
-          const tessera = parts['tessera']||'';
-          const nome    = parts['nome']   ||'';
-          const cognome = parts['cognome']||'';
-          const found   = iscrittiSet.has(tessera);
-          showResult(found, tessera, nome, cognome);
-        }
+        if (!iscrittiSet) await loadSheetData();
+
+        // parsing chiave:valore
+        const parts = {};
+        raw.split(';').forEach(p => {
+          const [k,v] = p.split(/:(.+)/);
+          parts[k.trim().toLowerCase()] = v.trim();
+        });
+
+        const tessera = parts['tessera']  || '';
+        const nome    = parts['nome']     || '';
+        const cognome = parts['cognome']  || '';
+        const found   = iscrittiSet.has(tessera);
+
+        showResult(found, tessera, nome, cognome);
       } catch {
         showError('Errore elaborazione');
       } finally {
-        showLoader(false);
         setTimeout(()=>{
           isProcessing            = false;
           preview.style.display   = 'none';
@@ -203,7 +196,7 @@
       }
     }
 
-    window.addEventListener('load', async ()=>{
+    window.addEventListener('load', async () => {
       await initCamera();
       tick();
     });
