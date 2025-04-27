@@ -70,7 +70,7 @@
   <div id="version">v1.4.6</div>
 
   <div id="loader">
-    <span id="loader-text">Caricamento dati… 0%</span>
+    <span id="loader-text">Caricamento dati…</span>
     <div id="spinner"></div>
   </div>
 
@@ -140,9 +140,11 @@
         return;
       }
 
-      showLoader(true);
       try {
+        showLoader(true);
+        loaderText.textContent = 'Caricamento dati…';
         const resp = await fetch(SHEET_CSV_URL);
+        debugLog('Fetch status:', resp.status);
         const txt = await resp.text();
         const lines = txt.trim().split(/\r?\n/).slice(1);
         const vals = lines.map(l => l.trim().replace(/^\uFEFF/, ''));
@@ -204,11 +206,22 @@
 
       try {
         if (/^https?:\/\//i.test(raw)) {
-          // fetch URL
-          const resp = await fetch(raw);
-          const txt  = await resp.text();
-          const iscritto = /\biscritto\b/i.test(txt) && !/\bnon iscritto\b/i.test(txt);
-          showResult(iscritto, '', '', '');
+          debugLog('URL rilevato, fetch in corso...');
+          showLoader(true);
+          try {
+            const resp = await fetch(raw);
+            debugLog('Fetch status:', resp.status);
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const txt = await resp.text();
+            debugLog('Fetch text:', txt);
+            const iscritto = /\biscritto\b/i.test(txt) && !/\bnon iscritto\b/i.test(txt);
+            showResult(iscritto, '', '', '');
+          } catch (e) {
+            debugLog('Fetch URL error:', e);
+            showError('Errore rete');
+          } finally {
+            showLoader(false);
+          }
         } else {
           if (!iscrittiSet) await loadSheetData();
           const parts = {};
@@ -224,6 +237,7 @@
           showResult(found, tessera, nome, cognome);
         }
       } catch (e) {
+        debugLog('Errore handleQR:', e);
         showError('Errore elaborazione');
       }
 
