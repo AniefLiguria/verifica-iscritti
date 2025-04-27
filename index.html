@@ -67,7 +67,7 @@
   <canvas id="canvas" hidden></canvas>
 
   <img id="logo" src="logo.png" alt="Logo ANIEF" onerror="this.style.display='none'">
-  <div id="version">v1.4.5</div>
+  <div id="version">v1.4.6</div>
 
   <div id="loader">
     <span id="loader-text">Caricamento dati… 0%</span>
@@ -82,8 +82,8 @@
   (function(){
     'use strict';
 
-    const DEBUG         = false;
-    const APP_VERSION   = 'v1.4.5';
+    const DEBUG         = true;
+    const APP_VERSION   = 'v1.4.6';
     const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQvb_6MieMU47M51EmRjlX_AFHSXIFtn0K9PJwGNz2gJYSE0WEMFdgoa7GYwsQsQYYhUHSO-r_RFAvC/pub?gid=1662775114&single=true&output=csv';
     const CACHE_KEY     = 'iscrittiCache';
     const CACHE_VER_KEY = 'iscrittiCacheVer';
@@ -193,38 +193,44 @@
       debugPanel.textContent = '';
       debugLog('QR raw:', raw);
 
-      // 1) preview freeze
+      // preview freeze
       preview.width  = video.videoWidth;
       preview.height = video.videoHeight;
       const pctx = preview.getContext('2d');
       pctx.drawImage(video, 0, 0);
       preview.style.display = 'block';
-      video.style.display = 'none';
+      video.style.display   = 'none';
       await new Promise(r => setTimeout(r, 1000));
 
-      // 2) parsing e verifica
       try {
-        if (!iscrittiSet) await loadSheetData();
-        const parts = {};
-        raw.split(';').forEach(p => {
-          const [k, v] = p.split(/:(.+)/);
-          parts[k.toLowerCase()] = v.trim();
-        });
-        const tessera = parts['tessera'] || '';
-        const nome    = parts['nome'] || '';
-        const cognome = parts['cognome'] || '';
-        debugLog('Valori estratti:', tessera, nome, cognome);
-        const found = iscrittiSet.has(tessera);
-        showResult(found, tessera, nome, cognome);
+        if (/^https?:\/\//i.test(raw)) {
+          // fetch URL
+          const resp = await fetch(raw);
+          const txt  = await resp.text();
+          const iscritto = /\biscritto\b/i.test(txt) && !/\bnon iscritto\b/i.test(txt);
+          showResult(iscritto, '', '', '');
+        } else {
+          if (!iscrittiSet) await loadSheetData();
+          const parts = {};
+          raw.split(';').forEach(p => {
+            const [k, v] = p.split(/:(.+)/);
+            parts[k.toLowerCase()] = v.trim();
+          });
+          const tessera = parts['tessera'] || '';
+          const nome    = parts['nome']    || '';
+          const cognome = parts['cognome'] || '';
+          debugLog('Valori estratti:', tessera, nome, cognome);
+          const found = iscrittiSet.has(tessera);
+          showResult(found, tessera, nome, cognome);
+        }
       } catch (e) {
         showError('Errore elaborazione');
       }
 
-      // 3) reset live
       setTimeout(() => {
         isProcessing = false;
         preview.style.display = 'none';
-        video.style.display = 'block';
+        video.style.display   = 'block';
         document.body.style.backgroundColor = '';
         msg.textContent = 'Inquadra un QR code…';
       }, 5000);
